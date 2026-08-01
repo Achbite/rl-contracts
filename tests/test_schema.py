@@ -50,7 +50,7 @@ class ContractSchemaTest(unittest.TestCase):
     def test_contract_version_is_breaking_release(self):
         self.assertEqual(
             (REPOSITORY / "VERSION").read_text(encoding="utf-8").strip(),
-            "0.5.0",
+            "0.6.0",
         )
 
     def test_run_id_fields_are_removed_and_reserved(self):
@@ -78,6 +78,37 @@ class ContractSchemaTest(unittest.TestCase):
             body,
             r"\bPUSH_RESULT_REJECTED_RUN\s*=",
         )
+
+    def test_open_session_assigns_mode_and_replay_policy(self):
+        request = block(self.source, "message", "OpenSessionReq")
+        response = block(self.source, "message", "OpenSessionRsp")
+        service = block(self.source, "service", "MazeService")
+        self.assertNotRegex(request, r"\bworkload_mode\s*=")
+        self.assertRegex(request, r"\bsession_protocol_version\s*=\s*1\s*;")
+        self.assertRegex(response, r"\bWorkloadMode\s+workload_mode\s*=")
+        self.assertRegex(response, r"\bReplayPolicy\s+replay_policy\s*=")
+        self.assertRegex(
+            service,
+            r"\brpc\s+OpenSession\s*\(\s*OpenSessionReq\s*\)",
+        )
+
+    def test_local_sample_backend_capabilities_are_explicit(self):
+        backend = block(self.source, "enum", "SampleBackendType")
+        status = block(self.source, "message", "DistributorStatusRsp")
+        self.assertRegex(
+            backend,
+            r"\bSAMPLE_BACKEND_TYPE_LOCAL_MEMORY\s*=\s*1\s*;",
+        )
+        for field in (
+            "backend_type",
+            "max_concurrent_consumers",
+            "active_consumer_count",
+            "consumer_busy_count",
+            "ingress_ready",
+            "pool_ready",
+        ):
+            with self.subTest(field=field):
+                self.assertRegex(status, rf"\b{field}\s*=")
 
 
 if __name__ == "__main__":
