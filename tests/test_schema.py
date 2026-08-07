@@ -38,7 +38,7 @@ class ContractSchemaTest(unittest.TestCase):
     def test_contract_version_is_locked_breaking_release(self):
         self.assertEqual(
             (REPOSITORY / "VERSION").read_text(encoding="utf-8").strip(),
-            "0.8.0",
+            "0.9.1",
         )
 
     def test_packages_and_import_dag_are_exact(self):
@@ -78,7 +78,7 @@ class ContractSchemaTest(unittest.TestCase):
         for training_type in (
             "Sample",
             "SampleBatch",
-            "BehaviorPolicyIdentity",
+            "BehaviorPolicyReference",
             "TrainingSemanticsIdentity",
             "ModelArtifactManifest",
             "SampleDistributorService",
@@ -239,7 +239,7 @@ class ContractSchemaTest(unittest.TestCase):
         batch = block(self.training_code, "message", "SampleBatch")
         for typed_field in (
             r"ContentDigest\s+payload_digest",
-            r"BehaviorPolicyIdentity\s+behavior_policy",
+            r"BehaviorPolicyReference\s+behavior_policy",
             r"TrainingSemanticsIdentity\s+training_semantics",
             r"ServiceInstanceIdentity\s+producer",
             r"ContractIdentity\s+contract",
@@ -268,6 +268,44 @@ class ContractSchemaTest(unittest.TestCase):
             "semantics_digest",
         ):
             self.assertRegex(semantics, rf"\b{field}\s*=")
+
+        behavior = block(
+            self.training_code, "message", "BehaviorPolicyReference"
+        )
+        for field in (
+            "model_lineage_id",
+            "model_version",
+            "distribution_schema_id",
+            "policy_spec_digest",
+        ):
+            self.assertRegex(behavior, rf"\b{field}\s*=")
+        self.assertNotRegex(behavior, r"\bartifact_digest\s*=")
+        self.assertNotRegex(behavior, r"\bmanifest_digest\s*=")
+
+    def test_get_batch_uses_bounded_multi_version_freshness(self):
+        request = block(self.training_code, "message", "GetBatchReq")
+        self.assertRegex(request, r"\bBatchAssemblySpec\s+assembly\s*=")
+        self.assertRegex(request, r"\bSampleFreshnessPolicy\s+freshness\s*=")
+        self.assertRegex(
+            request,
+            r"\bTrainingSemanticsIdentity\s+required_semantics\s*=",
+        )
+        self.assertNotRegex(request, r"\btarget_model\s*=")
+        assembly = block(self.training_code, "message", "BatchAssemblySpec")
+        for field in ("target_samples", "max_samples", "mode"):
+            self.assertRegex(assembly, rf"\b{field}\s*=")
+        freshness = block(
+            self.training_code, "message", "SampleFreshnessPolicy"
+        )
+        for field in (
+            "model_lineage_id",
+            "reference_model_version",
+            "max_version_lag",
+            "max_sample_age_ms",
+            "distribution_schema_id",
+            "policy_spec_digest",
+        ):
+            self.assertRegex(freshness, rf"\b{field}\s*=")
 
     def test_model_manifest_has_schema_shape_config_and_lineage(self):
         manifest = block(self.training_code, "message", "ModelArtifactManifest")
