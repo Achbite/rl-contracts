@@ -38,7 +38,7 @@ class ContractSchemaTest(unittest.TestCase):
     def test_contract_version_is_locked_breaking_release(self):
         self.assertEqual(
             (REPOSITORY / "VERSION").read_text(encoding="utf-8").strip(),
-            "0.9.1",
+            "0.10.0",
         )
 
     def test_packages_and_import_dag_are_exact(self):
@@ -306,6 +306,88 @@ class ContractSchemaTest(unittest.TestCase):
             "policy_spec_digest",
         ):
             self.assertRegex(freshness, rf"\b{field}\s*=")
+
+    def test_demand_credit_and_push_envelope_are_explicit(self):
+        demand = block(self.training_code, "message", "SampleDemand")
+        for field in (
+            "demand_id",
+            "demand_epoch",
+            "consumer",
+            "contract",
+            "training_semantics",
+            "freshness",
+            "assembly",
+            "max_buffered_samples",
+            "max_buffered_fragments",
+            "max_buffered_estimated_bytes",
+            "expires_at_unix_ms",
+        ):
+            self.assertRegex(demand, rf"\b{field}\s*=")
+
+        acquire = block(self.training_code, "message", "AcquireSampleCreditReq")
+        for field in (
+            "request_id",
+            "producer",
+            "contract",
+            "batch_id",
+            "payload_digest",
+            "behavior_policy",
+            "training_semantics",
+            "sample_count",
+            "fragment_count",
+            "estimated_bytes",
+            "created_at_unix_ms",
+        ):
+            self.assertRegex(acquire, rf"\b{field}\s*=")
+
+        push = block(self.training_code, "message", "PushSamplesReq")
+        self.assertRegex(push, r"\bstring\s+credit_id\s*=")
+        self.assertRegex(push, r"\bSampleBatch\s+batch\s*=")
+        service = block(
+            self.training_code, "service", "SampleDistributorService"
+        )
+        for rpc in (
+            "UpsertSampleDemand",
+            "ReleaseSampleDemand",
+            "GetSampleDemandStatus",
+            "AcquireSampleCredit",
+            "ReleaseSampleCredit",
+            "PushSamples",
+        ):
+            self.assertRegex(service, rf"\brpc\s+{rpc}\s*\(")
+        self.assertNotRegex(
+            service, r"\brpc\s+PushSamples\s*\(\s*SampleBatch\s*\)"
+        )
+
+    def test_credit_results_distinguish_wait_and_rejection(self):
+        results = block(self.training_code, "enum", "SampleCreditResult")
+        for name in (
+            "GRANTED",
+            "WAIT_NO_DEMAND",
+            "WAIT_INFLIGHT_LIMIT",
+            "WAIT_CAPACITY",
+            "WAIT_DRAINING",
+            "REJECTED_IDENTITY",
+            "REJECTED_SEMANTICS",
+            "REJECTED_FRESHNESS",
+            "REJECTED_INVALID",
+        ):
+            self.assertRegex(results, rf"\bSAMPLE_CREDIT_RESULT_{name}\s*=")
+        states = block(self.training_code, "enum", "SampleCreditState")
+        for name in ("RESERVED", "COMMITTED", "RELEASED", "EXPIRED", "REVOKED"):
+            self.assertRegex(states, rf"\bSAMPLE_CREDIT_STATE_{name}\s*=")
+
+    def test_maze_update_has_explicit_capacity_wait(self):
+        lifecycle = block(self.task_code, "enum", "LifecycleResult")
+        self.assertRegex(lifecycle, r"\bLIFECYCLE_RESULT_WAIT\s*=")
+        control = block(self.task_code, "enum", "EnvironmentControl")
+        self.assertRegex(
+            control,
+            r"\bENVIRONMENT_CONTROL_WAIT_FOR_TRAINING_CAPACITY\s*=",
+        )
+        response = block(self.task_code, "message", "UpdateRsp")
+        self.assertRegex(response, r"\bEnvironmentControl\s+environment_control\s*=")
+        self.assertRegex(response, r"\bint32\s+retry_after_ms\s*=")
 
     def test_model_manifest_has_schema_shape_config_and_lineage(self):
         manifest = block(self.training_code, "message", "ModelArtifactManifest")
