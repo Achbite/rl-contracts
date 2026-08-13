@@ -1,27 +1,37 @@
 # RL Contracts
 
-English | [简体中文](README.md)
+[简体中文](README.md) | English
 
-Canonical Protobuf contracts for the training framework. The current candidate version is
-`0.10.0`. `common.proto` contains stable cross-domain identity values, `training.proto`
-contains sample, sample-pool, model-distribution and typed metric contracts, and
-`maze_task.proto` contains the Maze Client and Task Adapter lifecycle. A build generates
-C++ and Python bindings plus a manifest binding source, artifact, platform and generator
-identities.
+## 1. Run tests
 
-## Build
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
+
+## 2. Create the 0.11.0 artifact
+
+Before this version is created for the first time, the repository must be reviewed, committed, and clean:
 
 ```bash
 bash build_artifact.sh
 ```
 
-Output directory:
+Output:
 
 ```text
-../.workspace/artifacts/rl-contracts/0.10.0/<platform>/
+../.workspace/artifacts/rl-contracts/0.11.0/<platform>/
 ```
 
-If the same version already exists with different content, the build stops instead of overwriting the artifact.
+The artifact contains C++ and Python bindings, all three Proto files, the `maze.metrics.v2` schema, its digest, and the manifest. Existing content under the same version is never overwritten when identities differ.
+
+## 3. Sync consumers
+
+```bash
+(cd ../rl-aiserver && bash scripts/sync_contract_snapshot.sh)
+(cd ../maze-client && bash scripts/sync_contract_snapshot.sh)
+```
+
+Learner consumes the fixed artifact directly when its image or development container is created.
 
 ## License
 

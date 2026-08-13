@@ -2,28 +2,36 @@
 
 简体中文 | [English](README.en.md)
 
-训练框架的 Protobuf 契约仓库，当前候选版本为 `0.10.0`：
+## 1. 运行测试
 
-- `common.proto`：跨域稳定身份与 digest 值对象。
-- `training.proto`：Sample、Sample Pool、模型分发与类型化指标信封。
-- `maze_task.proto`：Maze Client 与 Task Adapter 的任务及生命周期协议。
+```bash
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
+```
 
-构建后生成 C++、Python bindings 和同时绑定 source、artifact、platform、generator
-身份的 manifest。
+## 2. 生成 0.11.0 制品
 
-## 构建
+首次生成该版本前，仓库必须是已经审核并提交的 clean Git 保存点：
 
 ```bash
 bash build_artifact.sh
 ```
 
-输出目录：
+输出：
 
 ```text
-../.workspace/artifacts/rl-contracts/0.10.0/<platform>/
+../.workspace/artifacts/rl-contracts/0.11.0/<platform>/
 ```
 
-相同版本已经存在但内容不一致时，构建会停止，不会覆盖已有制品。
+制品包含 C++/Python bindings、三个 Proto、`maze.metrics.v2` schema、digest 和 manifest。相同版本内容不一致时不会覆盖旧制品。
+
+## 3. 同步消费者
+
+```bash
+(cd ../rl-aiserver && bash scripts/sync_contract_snapshot.sh)
+(cd ../maze-client && bash scripts/sync_contract_snapshot.sh)
+```
+
+Learner 在构建镜像和开发容器时直接使用该固定版本制品。
 
 ## License
 

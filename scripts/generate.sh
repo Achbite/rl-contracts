@@ -8,13 +8,18 @@ proto_files=(
     "${proto_dir}/training.proto"
     "${proto_dir}/maze_task.proto"
 )
+metric_catalog="/source/schemas/maze.metrics.v2.json"
+metric_catalog_digest="/source/schemas/maze.metrics.v2.sha256"
 cpp_out="/output/cpp"
 python_out="/output/python"
+schema_out="/output/schemas"
 
 for proto_file in "${proto_files[@]}"; do
     test -f "${proto_file}"
 done
-mkdir -p "${cpp_out}" "${python_out}"
+test -f "${metric_catalog}"
+test -f "${metric_catalog_digest}"
+mkdir -p "${cpp_out}" "${python_out}" "${schema_out}"
 
 grpc_plugin="$(command -v grpc_cpp_plugin)"
 protoc \
@@ -39,6 +44,10 @@ for generated in "${python_out}"/*_pb2.py "${python_out}"/*_pb2_grpc.py; do
 done
 touch "${python_out}/__init__.py"
 cp "${proto_files[@]}" "/output/"
+cp "${metric_catalog}" "${metric_catalog_digest}" "${schema_out}/"
+
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH="/output" \
+    python3 "/source/scripts/validate_generated.py"
 
 python3 - <<'PY'
 import json
@@ -64,3 +73,8 @@ with open("/output/generator-identity.json", "w", encoding="utf-8") as handle:
     json.dump(metadata, handle, indent=2, sort_keys=True)
     handle.write("\n")
 PY
+
+# Generated artifacts are bind-mounted into development containers. Docker's
+# user-namespace mapping must not depend on the host file owner to read them.
+find /output -type f -exec chmod 0644 {} +
+find /output -type d -exec chmod 0755 {} +

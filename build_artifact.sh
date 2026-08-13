@@ -18,7 +18,9 @@ platform_dir="${platform//\//-}"
 source_sha256="$(python3 - \
     "${repo_dir}/proto/v1/common.proto" \
     "${repo_dir}/proto/v1/training.proto" \
-    "${repo_dir}/proto/v1/maze_task.proto" <<'PY'
+    "${repo_dir}/proto/v1/maze_task.proto" \
+    "${repo_dir}/schemas/maze.metrics.v2.json" \
+    "${repo_dir}/schemas/maze.metrics.v2.sha256" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
@@ -99,6 +101,25 @@ if manifest.get("contract_packages") != [
     "rl.task.maze.v1",
 ]:
     raise SystemExit(1)
+catalog_path = root / "schemas/maze.metrics.v2.json"
+catalog_digest_path = root / "schemas/maze.metrics.v2.sha256"
+if not catalog_path.is_file() or not catalog_digest_path.is_file():
+    raise SystemExit(1)
+catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
+if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
+    raise SystemExit(1)
+if manifest.get("metric_schemas") != {
+    "maze.metrics.v2": {
+        "canonical_digest": {
+            "algorithm": "sha256",
+            "hex": catalog_digest,
+        },
+        "digest_path": "schemas/maze.metrics.v2.sha256",
+        "path": "schemas/maze.metrics.v2.json",
+        "schema_version": 2,
+    }
+}:
+    raise SystemExit(1)
 PY
     then
         printf '%s\n' "${output_dir}"
@@ -155,6 +176,11 @@ generator_identity = hashlib.sha256(
         generator_metadata, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
 ).hexdigest()
+catalog_path = root / "schemas/maze.metrics.v2.json"
+catalog_digest_path = root / "schemas/maze.metrics.v2.sha256"
+catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
+if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
+    raise SystemExit("maze.metrics.v2 catalog digest mismatch")
 
 manifest = {
     "schema_version": 2,
@@ -178,6 +204,17 @@ manifest = {
         "rl.training.v1",
         "rl.task.maze.v1",
     ],
+    "metric_schemas": {
+        "maze.metrics.v2": {
+            "canonical_digest": {
+                "algorithm": "sha256",
+                "hex": catalog_digest,
+            },
+            "digest_path": "schemas/maze.metrics.v2.sha256",
+            "path": "schemas/maze.metrics.v2.json",
+            "schema_version": 2,
+        }
+    },
     "files": files,
 }
 (root / "manifest.json").write_text(

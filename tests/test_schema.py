@@ -1,3 +1,5 @@
+import hashlib
+import json
 import re
 import unittest
 from pathlib import Path
@@ -7,6 +9,8 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 COMMON_PROTO = REPOSITORY / "proto" / "v1" / "common.proto"
 TRAINING_PROTO = REPOSITORY / "proto" / "v1" / "training.proto"
 MAZE_TASK_PROTO = REPOSITORY / "proto" / "v1" / "maze_task.proto"
+METRIC_CATALOG = REPOSITORY / "schemas" / "maze.metrics.v2.json"
+METRIC_CATALOG_DIGEST = REPOSITORY / "schemas" / "maze.metrics.v2.sha256"
 
 
 def without_comments(source: str) -> str:
@@ -38,7 +42,7 @@ class ContractSchemaTest(unittest.TestCase):
     def test_contract_version_is_locked_breaking_release(self):
         self.assertEqual(
             (REPOSITORY / "VERSION").read_text(encoding="utf-8").strip(),
-            "0.10.0",
+            "0.11.0",
         )
 
     def test_packages_and_import_dag_are_exact(self):
@@ -432,12 +436,160 @@ class ContractSchemaTest(unittest.TestCase):
         self.assertRegex(value, r"\buint64\s+count\s*=")
         self.assertRegex(value, r"\bdouble\s+quantile\s*=")
 
+    def test_metric_event_v2_preserves_raw_facts_and_replay_identity(self):
+        raw = block(self.training_code, "message", "RawMetricSumCount")
+        for field in ("field_id", "sum", "count"):
+            self.assertRegex(raw, rf"\b{field}\s*=")
+
+        agent = block(
+            self.training_code, "message", "AgentEpisodeMetricFact"
+        )
+        for field in (
+            "agent_id",
+            "episode_return",
+            "transition_count",
+            "success",
+            "termination_reason",
+            "reward_components",
+            "behavior_model_version_min",
+            "behavior_model_version_max",
+            "behavior_model_lineage_id",
+        ):
+            self.assertRegex(agent, rf"\b{field}\s*=")
+
+        episode = block(self.training_code, "message", "EpisodeMetricFact")
+        for field in (
+            "task_id",
+            "environment_instance_id",
+            "episode_id",
+            "training_semantics",
+            "agents",
+        ):
+            self.assertRegex(episode, rf"\b{field}\s*=")
+        self.assertNotRegex(episode, r"\bmean\s*=")
+
+        update = block(
+            self.training_code, "message", "TrainUpdateMetricFact"
+        )
+        for field in (
+            "train_update_id",
+            "train_update_sequence",
+            "published_model",
+            "delivery_id",
+            "training_semantics",
+            "cumulative_trained_samples",
+            "actual_batch_size",
+            "behavior_model_version_min",
+            "behavior_model_version_max",
+            "ppo_statistics",
+            "behavior_model_lineage_id",
+        ):
+            self.assertRegex(update, rf"\b{field}\s*=")
+
+        event = block(self.training_code, "message", "MetricEvent")
+        for field in (
+            "contract",
+            "schema_identity",
+            "source",
+            "event_sequence",
+            "committed_at_unix_ms",
+            "episode",
+            "train_update",
+        ):
+            self.assertRegex(event, rf"\b{field}\s*=")
+
+        batch = block(self.training_code, "message", "MetricBatch")
+        for field in (
+            "batch_sequence",
+            "batch_digest",
+            "first_event_sequence",
+            "last_event_sequence",
+            "events",
+            "heartbeat",
+            "source_final",
+            "final_event_sequence",
+            "event_time_watermark_unix_ms",
+            "gap",
+        ):
+            self.assertRegex(batch, rf"\b{field}\s*=")
+        cursor = block(self.training_code, "message", "MetricBatchCursor")
+        for field in (
+            "source",
+            "acknowledged_batch_sequence",
+            "acknowledged_event_sequence",
+            "acknowledged_batch_digest",
+        ):
+            self.assertRegex(cursor, rf"\b{field}\s*=")
+        service = block(self.training_code, "service", "MetricEventService")
+        self.assertRegex(service, r"\brpc\s+GetMetricBatch\s*\(")
+        self.assertRegex(service, r"\brpc\s+AckMetricBatch\s*\(")
+        ack = block(self.training_code, "message", "AckMetricBatchRsp")
+        self.assertRegex(ack, r"\bMetricBatchCursor\s+committed_cursor\s*=")
+        self.assertIn("final_event_sequence is zero", self.training)
+
+    def test_metric_event_v2_catalog_is_canonical_and_digest_bound(self):
+        catalog_bytes = METRIC_CATALOG.read_bytes()
+        digest = hashlib.sha256(catalog_bytes).hexdigest()
+        self.assertEqual(
+            METRIC_CATALOG_DIGEST.read_text(encoding="utf-8").strip(),
+            digest,
+        )
+        catalog = json.loads(catalog_bytes)
+        self.assertEqual(catalog["catalog_schema"], "rl.metric-field-catalog.v1")
+        self.assertEqual(catalog["schema_id"], "maze.metrics.v2")
+        self.assertEqual(catalog["schema_version"], 2)
+        identities = [
+            (field["fact"], field["field_id"])
+            for field in catalog["fields"]
+        ]
+        self.assertEqual(identities, sorted(identities))
+        self.assertEqual(len(identities), len(set(identities)))
+        self.assertEqual(
+            {field["aggregation"] for field in catalog["fields"]},
+            {"raw_sum_count"},
+        )
+        self.assertEqual(
+            {
+                field["field_id"]
+                for field in catalog["fields"]
+                if field["fact"] == "agent_episode"
+            },
+            {
+                "first_visit_bonus",
+                "geodesic_progress",
+                "goal_reward",
+                "timeout_penalty",
+                "wasted_action_penalty",
+            },
+        )
+
+    def test_model_manifest_responses_publish_contiguous_range(self):
+        manifest = block(
+            self.training_code, "message", "GetModelManifestRsp"
+        )
+        status = block(
+            self.training_code, "message", "ModelDistributorStatusRsp"
+        )
+        for source in (manifest, status):
+            self.assertRegex(
+                source, r"\boptional\s+uint64\s+available_floor_model_version\s*="
+            )
+            self.assertRegex(
+                source, r"\boptional\s+uint64\s+latest_available_model_version\s*="
+            )
+
     def test_generator_and_manifest_bind_all_three_contracts(self):
         generator = (REPOSITORY / "scripts" / "generate.sh").read_text(
             encoding="utf-8"
         )
         builder = (REPOSITORY / "build_artifact.sh").read_text(encoding="utf-8")
-        for filename in ("common.proto", "training.proto", "maze_task.proto"):
+        for filename in (
+            "common.proto",
+            "training.proto",
+            "maze_task.proto",
+            "maze.metrics.v2.json",
+            "maze.metrics.v2.sha256",
+        ):
             self.assertIn(filename, generator)
             self.assertIn(filename, builder)
         for field in (
@@ -446,8 +598,30 @@ class ContractSchemaTest(unittest.TestCase):
             "platform",
             "generator_identity",
             "contract_packages",
+            "metric_schemas",
         ):
             self.assertIn(field, builder)
+
+    def test_generator_runs_executable_metric_wire_validation(self):
+        generator = (REPOSITORY / "scripts" / "generate.sh").read_text(
+            encoding="utf-8"
+        )
+        validation = (
+            REPOSITORY / "scripts" / "validate_generated.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            'python3 "/source/scripts/validate_generated.py"', generator
+        )
+        self.assertIn("PYTHONDONTWRITEBYTECODE=1", generator)
+        self.assertIn("find /output -type f -exec chmod 0644", generator)
+        self.assertIn("SerializeToString(deterministic=True)", validation)
+        self.assertIn("MetricBatchCursor(", validation)
+        self.assertIn("RawMetricSumCount(", validation)
+        self.assertIn("load_metric_catalog()", validation)
+        self.assertIn(
+            "102861b8e277b248f4355cbb093f6064d337c7ab3e3d385bd52079603f515d87",
+            validation,
+        )
 
 
 if __name__ == "__main__":
