@@ -74,7 +74,3 @@ class CanonicalVectorTest(unittest.TestCase):
         self.assertNotEqual(
             hashlib.sha256(canonical).digest(), hashlib.sha256(tampered).digest()
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

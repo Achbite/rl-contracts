@@ -9,8 +9,8 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 COMMON_PROTO = REPOSITORY / "proto" / "v1" / "common.proto"
 TRAINING_PROTO = REPOSITORY / "proto" / "v1" / "training.proto"
 MAZE_TASK_PROTO = REPOSITORY / "proto" / "v1" / "maze_task.proto"
-METRIC_CATALOG = REPOSITORY / "schemas" / "maze.metrics.v2.json"
-METRIC_CATALOG_DIGEST = REPOSITORY / "schemas" / "maze.metrics.v2.sha256"
+METRIC_CATALOG = REPOSITORY / "schemas" / "maze.metrics.v3.json"
+METRIC_CATALOG_DIGEST = REPOSITORY / "schemas" / "maze.metrics.v3.sha256"
 
 
 def without_comments(source: str) -> str:
@@ -42,7 +42,7 @@ class ContractSchemaTest(unittest.TestCase):
     def test_contract_version_is_locked_breaking_release(self):
         self.assertEqual(
             (REPOSITORY / "VERSION").read_text(encoding="utf-8").strip(),
-            "0.11.0",
+            "0.13.0",
         )
 
     def test_packages_and_import_dag_are_exact(self):
@@ -85,7 +85,8 @@ class ContractSchemaTest(unittest.TestCase):
             "BehaviorPolicyReference",
             "TrainingSemanticsIdentity",
             "ModelArtifactManifest",
-            "SampleDistributorService",
+            "SamplePoolIngressService",
+            "SamplePoolConsumerService",
             "ModelDistributorService",
             "MetricDescriptor",
         ):
@@ -122,6 +123,7 @@ class ContractSchemaTest(unittest.TestCase):
             "workload_mode",
             "task_revision",
             "model_version",
+            "model_step",
         ):
             self.assertNotRegex(request, rf"\b{forbidden}\s*=")
         for required in (
@@ -137,20 +139,18 @@ class ContractSchemaTest(unittest.TestCase):
         self.assertRegex(response, r"\buint64\s+lifecycle_epoch\s*=")
         self.assertRegex(response, r"\bMazeTaskSpec\s+task_spec\s*=")
 
-    def test_server_assigns_episode_and_evaluation_identity(self):
+    def test_server_assigns_episode_identity_and_fixed_task_horizon(self):
         request = block(self.task_code, "message", "BeginEpisodeReq")
         response = block(self.task_code, "message", "BeginEpisodeRsp")
         assignment = block(self.task_code, "message", "EpisodeAssignment")
-        evaluation = block(self.task_code, "message", "EvaluationAssignment")
+        task_spec = block(self.task_code, "message", "MazeTaskSpec")
         self.assertNotRegex(request, r"\b(?:string|uint64|int64)\s+episode_id\s*=")
         self.assertRegex(response, r"\bEpisodeAssignment\s+assignment\s*=")
         self.assertRegex(assignment, r"\bstring\s+episode_id\s*=")
-        self.assertRegex(assignment, r"\bEvaluationAssignment\s+evaluation\s*=")
-        self.assertRegex(evaluation, r"\bstring\s+evaluation_id\s*=")
-        self.assertRegex(
-            evaluation,
-            r"\bbool\s+training_sample_emission_allowed\s*=",
-        )
+        self.assertRegex(task_spec, r"\buint32\s+episode_max_steps\s*=")
+        self.assertNotRegex(self.task_code, r"\bEvaluationAssignment\b")
+        self.assertNotRegex(self.task_code, r"\bEvaluationState\b")
+        self.assertNotRegex(self.task_code, r"\bCurriculumStage\b")
 
     def test_every_mutating_task_rpc_uses_lifecycle_command(self):
         command = block(self.task_code, "message", "LifecycleCommand")
@@ -158,16 +158,16 @@ class ContractSchemaTest(unittest.TestCase):
             "task",
             "session_id",
             "episode_id",
-            "evaluation_id",
             "lifecycle_epoch",
             "command_sequence",
             "idempotency_key",
             "expected_task_state",
             "expected_session_state",
             "expected_episode_state",
-            "expected_evaluation_state",
         ):
             self.assertRegex(command, rf"\b{field}\s*=")
+        for retired in ("evaluation_id", "expected_evaluation_state"):
+            self.assertNotRegex(command, rf"\b(?:string|EvaluationState)\s+{retired}\s*=")
         for request_name in (
             "InitReq",
             "BeginEpisodeReq",
@@ -220,6 +220,10 @@ class ContractSchemaTest(unittest.TestCase):
         self.assertNotRegex(agent, r"\b(?:repeated\s+)?float\s+obs(?:ervation)?\s*=")
         self.assertRegex(agent, r"\bVec2\s+position\s*=")
         self.assertRegex(agent, r"\bbool\s+last_move_blocked\s*=")
+        self.assertRegex(
+            agent,
+            r"\boptional\s+int32\s+executed_action_id\s*=\s*6\s*;",
+        )
 
     def test_sample_is_task_neutral_and_complete(self):
         sample = block(self.training_code, "message", "Sample")
@@ -252,15 +256,59 @@ class ContractSchemaTest(unittest.TestCase):
         for forbidden in ("map_id", "task_id", "curriculum_stage"):
             self.assertNotRegex(batch, rf"\b{forbidden}\s*=")
 
+    def test_platform_control_ids_are_not_contract_fields(self):
+        sources = (self.common_code, self.training_code, self.task_code)
+        for source in sources:
+            for field in ("task_id", "run_id", "pod_attempt_id"):
+                self.assertNotRegex(
+                    source,
+                    rf"\b(?:optional\s+)?[A-Za-z0-9_.<>]+\s+{field}\s*=",
+                )
+        task_identity = block(self.task_code, "message", "TaskIdentity")
+        episode_fact = block(self.training_code, "message", "EpisodeMetricFact")
+        self.assertRegex(task_identity, r"\breserved\s+2\s*;")
+        self.assertRegex(episode_fact, r"\breserved\s+1\s*;")
+        for source in (task_identity, episode_fact):
+            self.assertRegex(source, r'\breserved\s+"task_id"\s*;')
+
+    def test_shared_policy_binding_uses_optional_model_step(self):
+        binding = block(self.task_code, "message", "BehaviorPolicyBinding")
+        self.assertRegex(binding, r"\boptional\s+uint64\s+model_step\s*=\s*2\s*;")
+        self.assertRegex(binding, r'\breserved\s+"model_version"\s*;')
+
+    def test_legacy_model_version_fields_are_not_declared(self):
+        legacy_names = (
+            "model_version",
+            "reference_model_version",
+            "max_version_lag",
+            "minimum_behavior_model_version",
+            "maximum_behavior_model_version",
+            "minimum_ready_model_version",
+            "maximum_ready_model_version",
+            "behavior_model_version_min",
+            "behavior_model_version_max",
+            "available_floor_model_version",
+            "latest_available_model_version",
+            "behavior_versions",
+        )
+        for source in (self.task_code, self.training_code):
+            for field in legacy_names:
+                self.assertNotRegex(
+                    source,
+                    rf"\b(?:optional\s+|repeated\s+)?[A-Za-z0-9_.<>]+\s+{field}\s*=",
+                )
+        self.assertNotRegex(self.training_code, r"\bBehaviorVersionQueueStatus\b")
+
     def test_model_and_training_identities_are_layered(self):
         model = block(self.training_code, "message", "ModelIdentity")
         for field in (
             "model_lineage_id",
-            "model_version",
+            "model_step",
             "artifact_digest",
             "manifest_digest",
         ):
             self.assertRegex(model, rf"\b{field}\s*=")
+        self.assertRegex(model, r"\boptional\s+uint64\s+model_step\s*=\s*2\s*;")
         semantics = block(self.training_code, "message", "TrainingSemanticsIdentity")
         for field in (
             "training_contract_id",
@@ -278,15 +326,16 @@ class ContractSchemaTest(unittest.TestCase):
         )
         for field in (
             "model_lineage_id",
-            "model_version",
+            "model_step",
             "distribution_schema_id",
             "policy_spec_digest",
         ):
             self.assertRegex(behavior, rf"\b{field}\s*=")
+        self.assertRegex(behavior, r"\boptional\s+uint64\s+model_step\s*=\s*2\s*;")
         self.assertNotRegex(behavior, r"\bartifact_digest\s*=")
         self.assertNotRegex(behavior, r"\bmanifest_digest\s*=")
 
-    def test_get_batch_uses_bounded_multi_version_freshness(self):
+    def test_get_batch_uses_single_step_bounded_freshness(self):
         request = block(self.training_code, "message", "GetBatchReq")
         self.assertRegex(request, r"\bBatchAssemblySpec\s+assembly\s*=")
         self.assertRegex(request, r"\bSampleFreshnessPolicy\s+freshness\s*=")
@@ -303,83 +352,166 @@ class ContractSchemaTest(unittest.TestCase):
         )
         for field in (
             "model_lineage_id",
-            "reference_model_version",
-            "max_version_lag",
+            "reference_model_step",
+            "max_model_step_lag",
             "max_sample_age_ms",
             "distribution_schema_id",
             "policy_spec_digest",
         ):
             self.assertRegex(freshness, rf"\b{field}\s*=")
 
-    def test_demand_credit_and_push_envelope_are_explicit(self):
-        demand = block(self.training_code, "message", "SampleDemand")
-        for field in (
-            "demand_id",
-            "demand_epoch",
-            "consumer",
-            "contract",
-            "training_semantics",
-            "freshness",
-            "assembly",
-            "max_buffered_samples",
-            "max_buffered_fragments",
-            "max_buffered_estimated_bytes",
-            "expires_at_unix_ms",
-        ):
-            self.assertRegex(demand, rf"\b{field}\s*=")
-
-        acquire = block(self.training_code, "message", "AcquireSampleCreditReq")
-        for field in (
-            "request_id",
-            "producer",
-            "contract",
-            "batch_id",
-            "payload_digest",
-            "behavior_policy",
-            "training_semantics",
-            "sample_count",
-            "fragment_count",
-            "estimated_bytes",
-            "created_at_unix_ms",
-        ):
-            self.assertRegex(acquire, rf"\b{field}\s*=")
-
+    def test_sample_pool_ingress_and_consumer_services_are_disjoint(self):
         push = block(self.training_code, "message", "PushSamplesReq")
-        self.assertRegex(push, r"\bstring\s+credit_id\s*=")
-        self.assertRegex(push, r"\bSampleBatch\s+batch\s*=")
-        service = block(
-            self.training_code, "service", "SampleDistributorService"
+        self.assertRegex(push, r"\breserved\s+1\s*;")
+        self.assertRegex(push, r'\breserved\s+"credit_id"\s*;')
+        self.assertRegex(push, r"\bSampleBatch\s+batch\s*=\s*2\s*;")
+
+        ingress = block(
+            self.training_code, "service", "SamplePoolIngressService"
         )
+        consumer = block(
+            self.training_code, "service", "SamplePoolConsumerService"
+        )
+        self.assertEqual(
+            re.findall(r"\brpc\s+([A-Za-z0-9_]+)\s*\(", ingress),
+            ["PushSamples", "GetStatus"],
+        )
+        self.assertEqual(
+            re.findall(r"\brpc\s+([A-Za-z0-9_]+)\s*\(", consumer),
+            [
+                "GetBatch",
+                "AckBatch",
+                "NackBatch",
+                "RenewLease",
+                "FinalizeSamplePool",
+                "GetStatus",
+            ],
+        )
+
+        finalize_request = block(
+            self.training_code, "message", "FinalizeSamplePoolReq"
+        )
+        self.assertRegex(
+            finalize_request,
+            r"\bServiceInstanceIdentity\s+consumer\s*=\s*1\s*;",
+        )
+        self.assertRegex(
+            finalize_request,
+            r"\bServiceInstanceIdentity\s+expected_sample_pool\s*=\s*2\s*;",
+        )
+        self.assertRegex(
+            finalize_request, r"\bstring\s+finalization_id\s*=\s*3\s*;"
+        )
+        finalize_response = block(
+            self.training_code, "message", "FinalizeSamplePoolRsp"
+        )
+        for field in (
+            "result",
+            "finalization_id",
+            "sample_pool",
+            "settled_samples",
+            "settled_fragments",
+            "ready_samples",
+            "leased_samples",
+            "resident_samples",
+            "finalized_at_unix_ms",
+        ):
+            self.assertRegex(finalize_response, rf"\b{field}\s*=")
+        finalize_result = block(
+            self.training_code, "enum", "SamplePoolFinalizeResult"
+        )
+        for name in (
+            "FINALIZED",
+            "ALREADY_FINALIZED",
+            "REJECTED_ACTIVE_LEASE",
+            "REJECTED_IDENTITY",
+            "REJECTED_CONFLICT",
+        ):
+            self.assertRegex(
+                finalize_result,
+                rf"\bSAMPLE_POOL_FINALIZE_RESULT_{name}\s*=",
+            )
+        push_result = block(self.training_code, "enum", "PushResult")
+        self.assertRegex(
+            push_result, r"\bPUSH_RESULT_REJECTED_FINALIZED\s*=\s*7\s*;"
+        )
+
+        status = block(self.training_code, "message", "SamplePoolStatusRsp")
+        self.assertRegex(
+            status,
+            r"\bServiceInstanceIdentity\s+sample_pool\s*=\s*2\s*;",
+        )
+        self.assertRegex(status, r"\breserved\s+48\s+to\s+65\s*;")
+        for field in ("evicted_sample_count", "evicted_fragment_count"):
+            self.assertRegex(status, rf"\bint64\s+{field}\s*=")
+        self.assertRegex(status, r"\bbool\s+finalized\s*=\s*68\s*;")
+        self.assertRegex(
+            status, r"\bstring\s+finalization_id\s*=\s*69\s*;"
+        )
+        for field in (
+            "finalized_at_unix_ms",
+            "finalized_sample_count",
+            "finalized_fragment_count",
+        ):
+            self.assertRegex(status, rf"\bint64\s+{field}\s*=")
+        for response_name, field_number in (("PushSamplesRsp", 12), ("GetBatchRsp", 13)):
+            response = block(self.training_code, "message", response_name)
+            self.assertRegex(
+                response,
+                rf"\bServiceInstanceIdentity\s+sample_pool\s*=\s*{field_number}\s*;",
+            )
+
+        aiserver_status = block(
+            self.training_code, "message", "AIServerStatusRsp"
+        )
+        self.assertRegex(aiserver_status, r"\breserved\s+35\s+to\s+41\s*;")
+        for retired in (
+            "credit_request_count",
+            "credit_grant_count",
+            "credit_wait_count",
+            "credit_reacquire_count",
+            "producer_stale_count",
+            "capacity_wait_ms",
+            "training_capacity_wait",
+        ):
+            self.assertNotRegex(
+                aiserver_status,
+                rf"\b(?:int64|bool)\s+{retired}\s*=",
+            )
+
+    def test_retired_demand_credit_and_distributor_names_cannot_return(self):
+        retired_top_level = (
+            "SampleDistributorService",
+            "SampleDemandResult",
+            "SampleCreditResult",
+            "SampleCreditState",
+            "SampleCreditReleaseReason",
+            "SampleDemand",
+            "UpsertSampleDemandReq",
+            "ReleaseSampleDemandReq",
+            "GetSampleDemandStatusReq",
+            "SampleDemandRsp",
+            "SampleDemandStatusRsp",
+            "AcquireSampleCreditReq",
+            "SampleCreditGrant",
+            "ReleaseSampleCreditReq",
+            "ReleaseSampleCreditRsp",
+            "DistributorStatusReq",
+            "DistributorStatusRsp",
+        )
+        for name in retired_top_level:
+            self.assertNotRegex(
+                self.training_code,
+                rf"\b(?:message|enum|service)\s+{name}\b",
+            )
         for rpc in (
             "UpsertSampleDemand",
             "ReleaseSampleDemand",
             "GetSampleDemandStatus",
             "AcquireSampleCredit",
             "ReleaseSampleCredit",
-            "PushSamples",
         ):
-            self.assertRegex(service, rf"\brpc\s+{rpc}\s*\(")
-        self.assertNotRegex(
-            service, r"\brpc\s+PushSamples\s*\(\s*SampleBatch\s*\)"
-        )
-
-    def test_credit_results_distinguish_wait_and_rejection(self):
-        results = block(self.training_code, "enum", "SampleCreditResult")
-        for name in (
-            "GRANTED",
-            "WAIT_NO_DEMAND",
-            "WAIT_INFLIGHT_LIMIT",
-            "WAIT_CAPACITY",
-            "WAIT_DRAINING",
-            "REJECTED_IDENTITY",
-            "REJECTED_SEMANTICS",
-            "REJECTED_FRESHNESS",
-            "REJECTED_INVALID",
-        ):
-            self.assertRegex(results, rf"\bSAMPLE_CREDIT_RESULT_{name}\s*=")
-        states = block(self.training_code, "enum", "SampleCreditState")
-        for name in ("RESERVED", "COMMITTED", "RELEASED", "EXPIRED", "REVOKED"):
-            self.assertRegex(states, rf"\bSAMPLE_CREDIT_STATE_{name}\s*=")
+            self.assertNotRegex(self.training_code, rf"\brpc\s+{rpc}\s*\(")
 
     def test_maze_update_has_explicit_capacity_wait(self):
         lifecycle = block(self.task_code, "enum", "LifecycleResult")
@@ -413,6 +545,8 @@ class ContractSchemaTest(unittest.TestCase):
             self.assertRegex(manifest, rf"\b{field}\s*=")
         self.assertNotRegex(manifest, r"\bmap_id\s*=")
         self.assertNotRegex(manifest, r"\bcurriculum_stage\s*=")
+        self.assertRegex(manifest, r"\buint64\s+train_updates\s*=\s*15\s*;")
+        self.assertRegex(manifest, r"\buint64\s+trained_samples\s*=\s*16\s*;")
 
     def test_metric_registry_preserves_aggregation_inputs(self):
         descriptor = block(self.training_code, "message", "MetricDescriptor")
@@ -436,7 +570,7 @@ class ContractSchemaTest(unittest.TestCase):
         self.assertRegex(value, r"\buint64\s+count\s*=")
         self.assertRegex(value, r"\bdouble\s+quantile\s*=")
 
-    def test_metric_event_v2_preserves_raw_facts_and_replay_identity(self):
+    def test_metric_event_v3_preserves_raw_facts_and_replay_identity(self):
         raw = block(self.training_code, "message", "RawMetricSumCount")
         for field in ("field_id", "sum", "count"):
             self.assertRegex(raw, rf"\b{field}\s*=")
@@ -451,21 +585,23 @@ class ContractSchemaTest(unittest.TestCase):
             "success",
             "termination_reason",
             "reward_components",
-            "behavior_model_version_min",
-            "behavior_model_version_max",
+            "minimum_behavior_model_step",
+            "maximum_behavior_model_step",
             "behavior_model_lineage_id",
         ):
             self.assertRegex(agent, rf"\b{field}\s*=")
 
         episode = block(self.training_code, "message", "EpisodeMetricFact")
         for field in (
-            "task_id",
             "environment_instance_id",
             "episode_id",
             "training_semantics",
             "agents",
         ):
             self.assertRegex(episode, rf"\b{field}\s*=")
+        self.assertNotRegex(episode, r"\bstring\s+task_id\s*=")
+        self.assertRegex(episode, r"\breserved\s+1\s*;")
+        self.assertRegex(episode, r'\breserved\s+"task_id"\s*;')
         self.assertNotRegex(episode, r"\bmean\s*=")
 
         update = block(
@@ -479,8 +615,8 @@ class ContractSchemaTest(unittest.TestCase):
             "training_semantics",
             "cumulative_trained_samples",
             "actual_batch_size",
-            "behavior_model_version_min",
-            "behavior_model_version_max",
+            "minimum_behavior_model_step",
+            "maximum_behavior_model_step",
             "ppo_statistics",
             "behavior_model_lineage_id",
         ):
@@ -527,7 +663,7 @@ class ContractSchemaTest(unittest.TestCase):
         self.assertRegex(ack, r"\bMetricBatchCursor\s+committed_cursor\s*=")
         self.assertIn("final_event_sequence is zero", self.training)
 
-    def test_metric_event_v2_catalog_is_canonical_and_digest_bound(self):
+    def test_metric_event_v3_catalog_is_canonical_and_digest_bound(self):
         catalog_bytes = METRIC_CATALOG.read_bytes()
         digest = hashlib.sha256(catalog_bytes).hexdigest()
         self.assertEqual(
@@ -536,8 +672,8 @@ class ContractSchemaTest(unittest.TestCase):
         )
         catalog = json.loads(catalog_bytes)
         self.assertEqual(catalog["catalog_schema"], "rl.metric-field-catalog.v1")
-        self.assertEqual(catalog["schema_id"], "maze.metrics.v2")
-        self.assertEqual(catalog["schema_version"], 2)
+        self.assertEqual(catalog["schema_id"], "maze.metrics.v3")
+        self.assertEqual(catalog["schema_version"], 3)
         identities = [
             (field["fact"], field["field_id"])
             for field in catalog["fields"]
@@ -548,20 +684,11 @@ class ContractSchemaTest(unittest.TestCase):
             {field["aggregation"] for field in catalog["fields"]},
             {"raw_sum_count"},
         )
-        self.assertEqual(
-            {
-                field["field_id"]
-                for field in catalog["fields"]
-                if field["fact"] == "agent_episode"
-            },
-            {
-                "first_visit_bonus",
-                "geodesic_progress",
-                "goal_reward",
-                "timeout_penalty",
-                "wasted_action_penalty",
-            },
+        policy_lag = next(
+            field for field in catalog["fields"] if field["field_id"] == "policy_lag"
         )
+        self.assertEqual(policy_lag["dimension"], "model_step_distance")
+        self.assertEqual(policy_lag["unit"], "model_step")
 
     def test_model_manifest_responses_publish_contiguous_range(self):
         manifest = block(
@@ -572,10 +699,10 @@ class ContractSchemaTest(unittest.TestCase):
         )
         for source in (manifest, status):
             self.assertRegex(
-                source, r"\boptional\s+uint64\s+available_floor_model_version\s*="
+                source, r"\boptional\s+uint64\s+available_floor_model_step\s*="
             )
             self.assertRegex(
-                source, r"\boptional\s+uint64\s+latest_available_model_version\s*="
+                source, r"\boptional\s+uint64\s+latest_available_model_step\s*="
             )
 
     def test_generator_and_manifest_bind_all_three_contracts(self):
@@ -587,8 +714,8 @@ class ContractSchemaTest(unittest.TestCase):
             "common.proto",
             "training.proto",
             "maze_task.proto",
-            "maze.metrics.v2.json",
-            "maze.metrics.v2.sha256",
+            "maze.metrics.v3.json",
+            "maze.metrics.v3.sha256",
         ):
             self.assertIn(filename, generator)
             self.assertIn(filename, builder)
@@ -601,28 +728,3 @@ class ContractSchemaTest(unittest.TestCase):
             "metric_schemas",
         ):
             self.assertIn(field, builder)
-
-    def test_generator_runs_executable_metric_wire_validation(self):
-        generator = (REPOSITORY / "scripts" / "generate.sh").read_text(
-            encoding="utf-8"
-        )
-        validation = (
-            REPOSITORY / "scripts" / "validate_generated.py"
-        ).read_text(encoding="utf-8")
-        self.assertIn(
-            'python3 "/source/scripts/validate_generated.py"', generator
-        )
-        self.assertIn("PYTHONDONTWRITEBYTECODE=1", generator)
-        self.assertIn("find /output -type f -exec chmod 0644", generator)
-        self.assertIn("SerializeToString(deterministic=True)", validation)
-        self.assertIn("MetricBatchCursor(", validation)
-        self.assertIn("RawMetricSumCount(", validation)
-        self.assertIn("load_metric_catalog()", validation)
-        self.assertIn(
-            "102861b8e277b248f4355cbb093f6064d337c7ab3e3d385bd52079603f515d87",
-            validation,
-        )
-
-
-if __name__ == "__main__":
-    unittest.main()

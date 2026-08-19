@@ -7,11 +7,13 @@ workspace_root="${RL_TRAINING_WORKSPACE:-$(cd "${repo_dir}/.." && pwd)}"
 artifact_root="${workspace_root}/.workspace/artifacts/rl-contracts"
 version="$(tr -d '[:space:]' < "${repo_dir}/VERSION")"
 source_commit="$(git -C "${repo_dir}" rev-parse --short=12 HEAD)"
-if test -n "$(git -C "${repo_dir}" status --porcelain --untracked-files=all)"; then
-    source_tree_state="dirty"
-else
-    source_tree_state="clean"
+source_status="$(git -C "${repo_dir}" status --porcelain --untracked-files=all)"
+if test -n "${source_status}"; then
+    echo "refusing to create or reuse a contracts artifact from a dirty worktree" >&2
+    echo "commit the reviewed source first, then rerun this command" >&2
+    exit 1
 fi
+source_tree_state="clean"
 platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
 platform_dir="${platform//\//-}"
 
@@ -19,8 +21,8 @@ source_sha256="$(python3 - \
     "${repo_dir}/proto/v1/common.proto" \
     "${repo_dir}/proto/v1/training.proto" \
     "${repo_dir}/proto/v1/maze_task.proto" \
-    "${repo_dir}/schemas/maze.metrics.v2.json" \
-    "${repo_dir}/schemas/maze.metrics.v2.sha256" <<'PY'
+    "${repo_dir}/schemas/maze.metrics.v3.json" \
+    "${repo_dir}/schemas/maze.metrics.v3.sha256" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
@@ -45,6 +47,7 @@ if test -d "${output_dir}"; then
     if PACKAGE_VERSION="${version}" \
        SOURCE_ID="${source_id}" \
        SOURCE_SHA256="${source_sha256}" \
+       SOURCE_COMMIT="${source_commit}" \
        PLATFORM="${platform}" \
        python3 - "${output_dir}" <<'PY'
 import hashlib
@@ -62,6 +65,8 @@ expected = {
     "package": "rl-contracts",
     "version": os.environ["PACKAGE_VERSION"],
     "platform": os.environ["PLATFORM"],
+    "source_commit": os.environ["SOURCE_COMMIT"],
+    "source_tree_state": "clean",
 }
 if any(manifest.get(key) != value for key, value in expected.items()):
     raise SystemExit(1)
@@ -101,22 +106,22 @@ if manifest.get("contract_packages") != [
     "rl.task.maze.v1",
 ]:
     raise SystemExit(1)
-catalog_path = root / "schemas/maze.metrics.v2.json"
-catalog_digest_path = root / "schemas/maze.metrics.v2.sha256"
+catalog_path = root / "schemas/maze.metrics.v3.json"
+catalog_digest_path = root / "schemas/maze.metrics.v3.sha256"
 if not catalog_path.is_file() or not catalog_digest_path.is_file():
     raise SystemExit(1)
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
     raise SystemExit(1)
 if manifest.get("metric_schemas") != {
-    "maze.metrics.v2": {
+    "maze.metrics.v3": {
         "canonical_digest": {
             "algorithm": "sha256",
             "hex": catalog_digest,
         },
-        "digest_path": "schemas/maze.metrics.v2.sha256",
-        "path": "schemas/maze.metrics.v2.json",
-        "schema_version": 2,
+        "digest_path": "schemas/maze.metrics.v3.sha256",
+        "path": "schemas/maze.metrics.v3.json",
+        "schema_version": 3,
     }
 }:
     raise SystemExit(1)
@@ -176,11 +181,11 @@ generator_identity = hashlib.sha256(
         generator_metadata, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
 ).hexdigest()
-catalog_path = root / "schemas/maze.metrics.v2.json"
-catalog_digest_path = root / "schemas/maze.metrics.v2.sha256"
+catalog_path = root / "schemas/maze.metrics.v3.json"
+catalog_digest_path = root / "schemas/maze.metrics.v3.sha256"
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
-    raise SystemExit("maze.metrics.v2 catalog digest mismatch")
+    raise SystemExit("maze.metrics.v3 catalog digest mismatch")
 
 manifest = {
     "schema_version": 2,
@@ -205,14 +210,14 @@ manifest = {
         "rl.task.maze.v1",
     ],
     "metric_schemas": {
-        "maze.metrics.v2": {
+        "maze.metrics.v3": {
             "canonical_digest": {
                 "algorithm": "sha256",
                 "hex": catalog_digest,
             },
-            "digest_path": "schemas/maze.metrics.v2.sha256",
-            "path": "schemas/maze.metrics.v2.json",
-            "schema_version": 2,
+            "digest_path": "schemas/maze.metrics.v3.sha256",
+            "path": "schemas/maze.metrics.v3.json",
+            "schema_version": 3,
         }
     },
     "files": files,
