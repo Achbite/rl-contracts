@@ -149,8 +149,8 @@ def finalize_contract(args: argparse.Namespace) -> None:
         raise SystemExit("contract source changed while the development artifact was built")
     files = file_inventory(root)
     generator_path = root / "generator-identity.json"
-    catalog_path = root / "schemas/maze.metrics.v3.json"
-    catalog_digest_path = root / "schemas/maze.metrics.v3.sha256"
+    catalog_path = root / "schemas/maze.metrics.v4.json"
+    catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
     if not generator_path.is_file():
         raise SystemExit("contract generator identity is missing")
     if not catalog_path.is_file() or not catalog_digest_path.is_file():
@@ -194,14 +194,14 @@ def finalize_contract(args: argparse.Namespace) -> None:
             ],
             "generator_identity": generator_identity,
             "metric_schemas": {
-                "maze.metrics.v3": {
+                "maze.metrics.v4": {
                     "canonical_digest": {
                         "algorithm": "sha256",
                         "hex": catalog_digest,
                     },
-                    "digest_path": "schemas/maze.metrics.v3.sha256",
-                    "path": "schemas/maze.metrics.v3.json",
-                    "schema_version": 3,
+                    "digest_path": "schemas/maze.metrics.v4.sha256",
+                    "path": "schemas/maze.metrics.v4.json",
+                    "schema_version": 4,
                 }
             },
             "schema_version": 2,

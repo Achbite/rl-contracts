@@ -21,8 +21,8 @@ source_sha256="$(python3 - \
     "${repo_dir}/proto/v1/common.proto" \
     "${repo_dir}/proto/v1/training.proto" \
     "${repo_dir}/proto/v1/maze_task.proto" \
-    "${repo_dir}/schemas/maze.metrics.v3.json" \
-    "${repo_dir}/schemas/maze.metrics.v3.sha256" <<'PY'
+    "${repo_dir}/schemas/maze.metrics.v4.json" \
+    "${repo_dir}/schemas/maze.metrics.v4.sha256" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
@@ -106,22 +106,22 @@ if manifest.get("contract_packages") != [
     "rl.task.maze.v1",
 ]:
     raise SystemExit(1)
-catalog_path = root / "schemas/maze.metrics.v3.json"
-catalog_digest_path = root / "schemas/maze.metrics.v3.sha256"
+catalog_path = root / "schemas/maze.metrics.v4.json"
+catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
 if not catalog_path.is_file() or not catalog_digest_path.is_file():
     raise SystemExit(1)
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
     raise SystemExit(1)
 if manifest.get("metric_schemas") != {
-    "maze.metrics.v3": {
+    "maze.metrics.v4": {
         "canonical_digest": {
             "algorithm": "sha256",
             "hex": catalog_digest,
         },
-        "digest_path": "schemas/maze.metrics.v3.sha256",
-        "path": "schemas/maze.metrics.v3.json",
-        "schema_version": 3,
+        "digest_path": "schemas/maze.metrics.v4.sha256",
+        "path": "schemas/maze.metrics.v4.json",
+        "schema_version": 4,
     }
 }:
     raise SystemExit(1)
@@ -181,11 +181,11 @@ generator_identity = hashlib.sha256(
         generator_metadata, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
 ).hexdigest()
-catalog_path = root / "schemas/maze.metrics.v3.json"
-catalog_digest_path = root / "schemas/maze.metrics.v3.sha256"
+catalog_path = root / "schemas/maze.metrics.v4.json"
+catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
-    raise SystemExit("maze.metrics.v3 catalog digest mismatch")
+    raise SystemExit("maze.metrics.v4 catalog digest mismatch")
 
 manifest = {
     "schema_version": 2,
@@ -210,14 +210,14 @@ manifest = {
         "rl.task.maze.v1",
     ],
     "metric_schemas": {
-        "maze.metrics.v3": {
+        "maze.metrics.v4": {
             "canonical_digest": {
                 "algorithm": "sha256",
                 "hex": catalog_digest,
             },
-            "digest_path": "schemas/maze.metrics.v3.sha256",
-            "path": "schemas/maze.metrics.v3.json",
-            "schema_version": 3,
+            "digest_path": "schemas/maze.metrics.v4.sha256",
+            "path": "schemas/maze.metrics.v4.json",
+            "schema_version": 4,
         }
     },
     "files": files,

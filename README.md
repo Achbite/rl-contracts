@@ -8,9 +8,9 @@
 bash ./test.sh
 ```
 
-`test.sh` 是本仓库唯一公开测试入口；测试文件和测试项使用显式清单，新增或扩写测试必须先有用户批准的 TCR。
+`test.sh` 是本仓库的统一测试入口，并按显式清单运行当前开发校验。
 
-## 2. 生成 0.13.0 制品
+## 2. 生成 0.14.0 制品
 
 首次生成该版本前，仓库必须是已经审核并提交的 clean Git 保存点：
 
@@ -21,10 +21,10 @@ bash build_artifact.sh
 输出：
 
 ```text
-../.workspace/artifacts/rl-contracts/0.13.0/<platform>/
+../.workspace/artifacts/rl-contracts/0.14.0/<platform>/
 ```
 
-制品包含 C++/Python bindings、三个 Proto、`maze.metrics.v3` schema、digest 和 manifest。相同版本内容不一致时不会覆盖旧制品。
+制品包含 C++/Python bindings、三个 Proto、`maze.metrics.v4` schema、digest 和 manifest。相同版本内容不一致时不会覆盖旧制品。
 
 ## 3. 同步消费者
 

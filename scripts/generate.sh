@@ -8,8 +8,8 @@ proto_files=(
     "${proto_dir}/training.proto"
     "${proto_dir}/maze_task.proto"
 )
-metric_catalog="/source/schemas/maze.metrics.v3.json"
-metric_catalog_digest="/source/schemas/maze.metrics.v3.sha256"
+metric_catalog="/source/schemas/maze.metrics.v4.json"
+metric_catalog_digest="/source/schemas/maze.metrics.v4.sha256"
 cpp_out="/output/cpp"
 python_out="/output/python"
 schema_out="/output/schemas"
