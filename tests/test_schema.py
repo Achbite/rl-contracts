@@ -34,20 +34,18 @@ def fill_service(service, component, instance):
     service.lifecycle_epoch = 1
 
 
-class A3DevelopmentWireTest(unittest.TestCase):
+class TrainingWireTest(unittest.TestCase):
     def test_fixed_component_messages_round_trip(self):
         open_request = maze_task_pb2.OpenSessionReq()
         fill_service(open_request.client, "maze-client", "client-fixed")
         open_request.environment_instance_id = "environment-fixed"
-        open_request.supported_session_protocol_versions.append(3)
-        open_request.idempotency_key = "open-fixed"
+        open_request.request_id = "open-fixed"
 
         update_request = maze_task_pb2.UpdateReq()
         update_request.command.session_id = "session-fixed"
         update_request.command.episode_id = "episode-fixed"
-        update_request.command.lifecycle_epoch = 1
-        update_request.command.command_sequence = 2
-        update_request.command.idempotency_key = "update-fixed"
+        update_request.command.session_epoch = 1
+        update_request.command.sequence = 2
         update_request.frame_id = 7
         state = update_request.agents.add()
         state.agent_id = 3
@@ -57,20 +55,34 @@ class A3DevelopmentWireTest(unittest.TestCase):
         state.executed_action_id = 2
 
         update_response = maze_task_pb2.UpdateRsp()
-        update_response.lifecycle.ret_code = 0
-        update_response.lifecycle.applied_sequence = 2
-        action = update_response.actions.add()
+        update_response.reply.result = maze_task_pb2.COMMAND_RESULT_APPLIED
+        update_response.reply.applied_sequence = 2
+        update_response.reply.phase = maze_task_pb2.SESSION_PHASE_EPISODE_RUNNING
+        action = update_response.action_batch.actions.add()
         action.agent_id = 3
         action.action_id = 6
 
         manifest = training_pb2.ModelArtifactManifest()
-        manifest.manifest_schema_version = 3
         manifest.identity.model_lineage_id = "lineage-fixed"
         manifest.identity.model_step = 4
         fill_digest(manifest.identity.artifact_digest, "a" * 64)
         fill_digest(manifest.identity.manifest_digest, "b" * 64)
-        manifest.model_file = "SaveModel.onnx"
-        manifest.ready = True
+        manifest.size_bytes = 123
+        manifest.trained_samples = 456
+        fill_digest(manifest.training_config_digest, "e" * 64)
+        fill_digest(manifest.training_contract_digest, "c" * 64)
+        manifest.published_at_unix_ms = 1_700_000_000_000
+        manifest.rollout_estimator_profile.gamma = 0.99
+        manifest.rollout_estimator_profile.gae_lambda = 0.95
+        manifest.rollout_estimator_profile.tmax = 128
+        fill_digest(
+            manifest.rollout_estimator_profile.profile_digest, "f" * 64
+        )
+
+        register_model = training_pb2.RegisterModelReq()
+        register_model.manifest.CopyFrom(manifest)
+        register_model.contract.package_name = "rl-contracts"
+        register_model.local_artifact_path = "/models/0000004/SaveModel.onnx"
 
         model_ack = training_pb2.AckModelReq()
         fill_service(model_ack.aiserver, "aiserver", "aiserver-fixed")
@@ -80,36 +92,22 @@ class A3DevelopmentWireTest(unittest.TestCase):
 
         transition = training_pb2.ProcessedTransition()
         transition.item_id = "item-fixed"
-        transition.environment_session_id = "session-fixed"
-        transition.episode_id = "episode-fixed"
-        transition.agent_id = 3
-        transition.segment_id = "segment-fixed"
-        transition.transition_index = 0
-        transition.segment_transition_count = 1
-        transition.action_step = 7
         transition.observation.extend([1.0, 2.0])
-        transition.next_observation.extend([2.0, 3.0])
         transition.action = 6
-        transition.reward = 0.0
         transition.behavior_log_probability = -0.5
         transition.behavior_value = 0.25
         transition.advantage = 0.75
         transition.value_target = 1.0
-        transition.segment_boundary = True
-        transition.bootstrap_applied = True
-        transition.bootstrap_value = 0.4
-        transition.behavior_policy.model_lineage_id = "lineage-fixed"
-        transition.behavior_policy.model_step = 4
-        fill_digest(
-            transition.rollout_estimator_profile_digest,
-            "c" * 64,
-        )
+        transition.behavior_model_step = 4
+        transition.created_at_unix_ms = 1_700_000_000_000
 
         envelope = training_pb2.ProcessedTransitionEnvelope()
         envelope.envelope_id = "envelope-fixed"
         fill_digest(envelope.payload_digest, "d" * 64)
-        envelope.transitions.add().CopyFrom(transition)
         fill_service(envelope.producer, "aiserver", "aiserver-fixed")
+        fill_digest(envelope.training_contract_digest, "c" * 64)
+        envelope.behavior_model.CopyFrom(manifest.identity)
+        envelope.samples.add().CopyFrom(transition)
 
         push_request = training_pb2.PushSamplesReq()
         push_request.envelope.CopyFrom(envelope)
@@ -118,14 +116,16 @@ class A3DevelopmentWireTest(unittest.TestCase):
         get_request.requested_transitions = 1
         get_request.timeout_ms = 10
         fill_service(get_request.consumer, "learner", "learner-fixed")
+        fill_digest(get_request.required_training_contract_digest, "c" * 64)
 
         get_response = training_pb2.GetBatchRsp()
         get_response.items.add().transition.CopyFrom(transition)
+        get_response.items[0].insert_sequence = 1
+        get_response.items[0].inserted_at_unix_ms = 1_700_000_000_001
+        get_response.items[0].draw_count = 1
         get_response.delivery_id = "delivery-fixed"
-        get_response.returned_transitions = 1
-        get_response.actual_transition_count = 1
-        get_response.leased_transitions = 1
         get_response.result = training_pb2.GET_BATCH_RESULT_LEASED
+        fill_service(get_response.sample_pool, "sample-pool", "pool-fixed")
 
         ack_request = training_pb2.AckBatchReq()
         fill_service(ack_request.consumer, "learner", "learner-fixed")
@@ -138,6 +138,7 @@ class A3DevelopmentWireTest(unittest.TestCase):
             update_request,
             update_response,
             manifest,
+            register_model,
             model_ack,
             envelope,
             push_request,
@@ -151,5 +152,4 @@ class A3DevelopmentWireTest(unittest.TestCase):
                 self.assertGreater(len(payload), 0)
                 self.assertEqual(parsed, message)
 
-        self.assertTrue(transition.HasField("bootstrap_value"))
-        self.assertTrue(transition.behavior_policy.HasField("model_step"))
+        self.assertTrue(transition.HasField("behavior_model_step"))

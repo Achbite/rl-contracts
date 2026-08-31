@@ -21,8 +21,10 @@ source_sha256="$(python3 - \
     "${repo_dir}/proto/v1/common.proto" \
     "${repo_dir}/proto/v1/training.proto" \
     "${repo_dir}/proto/v1/maze_task.proto" \
-    "${repo_dir}/schemas/maze.metrics.v4.json" \
-    "${repo_dir}/schemas/maze.metrics.v4.sha256" <<'PY'
+    "${repo_dir}/schemas/maze.metrics.json" \
+    "${repo_dir}/schemas/maze.metrics.sha256" \
+    "${repo_dir}/schemas/training-contract.json" \
+    "${repo_dir}/schemas/training-contract.sha256" <<'PY'
 import hashlib
 import sys
 from pathlib import Path
@@ -106,23 +108,36 @@ if manifest.get("contract_packages") != [
     "rl.task.maze.v1",
 ]:
     raise SystemExit(1)
-catalog_path = root / "schemas/maze.metrics.v4.json"
-catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
+catalog_path = root / "schemas/maze.metrics.json"
+catalog_digest_path = root / "schemas/maze.metrics.sha256"
 if not catalog_path.is_file() or not catalog_digest_path.is_file():
     raise SystemExit(1)
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
     raise SystemExit(1)
 if manifest.get("metric_schemas") != {
-    "maze.metrics.v4": {
+    "maze.metrics": {
         "canonical_digest": {
             "algorithm": "sha256",
             "hex": catalog_digest,
         },
-        "digest_path": "schemas/maze.metrics.v4.sha256",
-        "path": "schemas/maze.metrics.v4.json",
-        "schema_version": 4,
+        "digest_path": "schemas/maze.metrics.sha256",
+        "path": "schemas/maze.metrics.json",
+        "schema_version": 1,
     }
+}:
+    raise SystemExit(1)
+training_contract_path = root / "schemas/training-contract.json"
+training_contract_digest_path = root / "schemas/training-contract.sha256"
+if not training_contract_path.is_file() or not training_contract_digest_path.is_file():
+    raise SystemExit(1)
+training_contract_digest = hashlib.sha256(training_contract_path.read_bytes()).hexdigest()
+if training_contract_digest_path.read_text(encoding="utf-8").strip() != training_contract_digest:
+    raise SystemExit(1)
+if manifest.get("training_contract") != {
+    "canonical_digest": {"algorithm": "sha256", "hex": training_contract_digest},
+    "digest_path": "schemas/training-contract.sha256",
+    "path": "schemas/training-contract.json",
 }:
     raise SystemExit(1)
 PY
@@ -181,11 +196,21 @@ generator_identity = hashlib.sha256(
         generator_metadata, separators=(",", ":"), sort_keys=True
     ).encode("utf-8")
 ).hexdigest()
-catalog_path = root / "schemas/maze.metrics.v4.json"
-catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
+catalog_path = root / "schemas/maze.metrics.json"
+catalog_digest_path = root / "schemas/maze.metrics.sha256"
 catalog_digest = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
 if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
-    raise SystemExit("maze.metrics.v4 catalog digest mismatch")
+    raise SystemExit("maze.metrics catalog digest mismatch")
+training_contract_path = root / "schemas/training-contract.json"
+training_contract_digest_path = root / "schemas/training-contract.sha256"
+training_contract_digest = hashlib.sha256(
+    training_contract_path.read_bytes()
+).hexdigest()
+if (
+    training_contract_digest_path.read_text(encoding="utf-8").strip()
+    != training_contract_digest
+):
+    raise SystemExit("training contract descriptor digest mismatch")
 
 manifest = {
     "schema_version": 2,
@@ -210,15 +235,23 @@ manifest = {
         "rl.task.maze.v1",
     ],
     "metric_schemas": {
-        "maze.metrics.v4": {
+        "maze.metrics": {
             "canonical_digest": {
                 "algorithm": "sha256",
                 "hex": catalog_digest,
             },
-            "digest_path": "schemas/maze.metrics.v4.sha256",
-            "path": "schemas/maze.metrics.v4.json",
-            "schema_version": 4,
+            "digest_path": "schemas/maze.metrics.sha256",
+            "path": "schemas/maze.metrics.json",
+            "schema_version": 1,
         }
+    },
+    "training_contract": {
+        "canonical_digest": {
+            "algorithm": "sha256",
+            "hex": training_contract_digest,
+        },
+        "digest_path": "schemas/training-contract.sha256",
+        "path": "schemas/training-contract.json",
     },
     "files": files,
 }

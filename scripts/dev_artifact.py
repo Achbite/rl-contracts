@@ -149,15 +149,28 @@ def finalize_contract(args: argparse.Namespace) -> None:
         raise SystemExit("contract source changed while the development artifact was built")
     files = file_inventory(root)
     generator_path = root / "generator-identity.json"
-    catalog_path = root / "schemas/maze.metrics.v4.json"
-    catalog_digest_path = root / "schemas/maze.metrics.v4.sha256"
+    catalog_path = root / "schemas/maze.metrics.json"
+    catalog_digest_path = root / "schemas/maze.metrics.sha256"
+    training_contract_path = root / "schemas/training-contract.json"
+    training_contract_digest_path = root / "schemas/training-contract.sha256"
     if not generator_path.is_file():
         raise SystemExit("contract generator identity is missing")
     if not catalog_path.is_file() or not catalog_digest_path.is_file():
         raise SystemExit("contract metric schema is missing")
+    if (
+        not training_contract_path.is_file()
+        or not training_contract_digest_path.is_file()
+    ):
+        raise SystemExit("training contract descriptor is missing")
     catalog_digest = sha256_file(catalog_path)
     if catalog_digest_path.read_text(encoding="utf-8").strip() != catalog_digest:
         raise SystemExit("contract metric schema digest is invalid")
+    training_contract_digest = sha256_file(training_contract_path)
+    if (
+        training_contract_digest_path.read_text(encoding="utf-8").strip()
+        != training_contract_digest
+    ):
+        raise SystemExit("training contract descriptor digest is invalid")
     generator_identity = hashlib.sha256(
         canonical_json(load_json(generator_path))
     ).hexdigest()
@@ -168,6 +181,8 @@ def finalize_contract(args: argparse.Namespace) -> None:
         root / "maze_task.proto",
         catalog_path,
         catalog_digest_path,
+        training_contract_path,
+        training_contract_digest_path,
     ):
         canonical_source.update(path.name.encode("utf-8"))
         canonical_source.update(b"\0")
@@ -194,15 +209,23 @@ def finalize_contract(args: argparse.Namespace) -> None:
             ],
             "generator_identity": generator_identity,
             "metric_schemas": {
-                "maze.metrics.v4": {
+                "maze.metrics": {
                     "canonical_digest": {
                         "algorithm": "sha256",
                         "hex": catalog_digest,
                     },
-                    "digest_path": "schemas/maze.metrics.v4.sha256",
-                    "path": "schemas/maze.metrics.v4.json",
-                    "schema_version": 4,
+                    "digest_path": "schemas/maze.metrics.sha256",
+                    "path": "schemas/maze.metrics.json",
+                    "schema_version": 1,
                 }
+            },
+            "training_contract": {
+                "canonical_digest": {
+                    "algorithm": "sha256",
+                    "hex": training_contract_digest,
+                },
+                "digest_path": "schemas/training-contract.sha256",
+                "path": "schemas/training-contract.json",
             },
             "schema_version": 2,
         }
