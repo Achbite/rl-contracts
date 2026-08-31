@@ -21,9 +21,8 @@ python3 -m grpc_tools.protoc \
     "${repo_dir}/proto/v1/training.proto" \
     "${repo_dir}/proto/v1/maze_task.proto"
 
-# TCR-A3-DEVELOPMENT-VALIDATION-008: one generated-message development check.
 PYTHONDONTWRITEBYTECODE=1 \
 RL_CONTRACT_TEST_BINDINGS_DIR="${bindings_dir}" \
 PYTHONPATH="${repo_dir}${PYTHONPATH:+:${PYTHONPATH}}" \
 exec python3 -m unittest -v \
-    tests.test_schema.A3DevelopmentWireTest.test_fixed_component_messages_round_trip
+    tests.test_schema.TrainingWireTest.test_fixed_component_messages_round_trip

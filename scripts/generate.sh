@@ -8,8 +8,14 @@ proto_files=(
     "${proto_dir}/training.proto"
     "${proto_dir}/maze_task.proto"
 )
-metric_catalog="/source/schemas/maze.metrics.v4.json"
-metric_catalog_digest="/source/schemas/maze.metrics.v4.sha256"
+service_proto_files=(
+    "${proto_dir}/training.proto"
+    "${proto_dir}/maze_task.proto"
+)
+metric_catalog="/source/schemas/maze.metrics.json"
+metric_catalog_digest="/source/schemas/maze.metrics.sha256"
+training_contract="/source/schemas/training-contract.json"
+training_contract_digest="/source/schemas/training-contract.sha256"
 cpp_out="/output/cpp"
 python_out="/output/python"
 schema_out="/output/schemas"
@@ -19,21 +25,29 @@ for proto_file in "${proto_files[@]}"; do
 done
 test -f "${metric_catalog}"
 test -f "${metric_catalog_digest}"
+test -f "${training_contract}"
+test -f "${training_contract_digest}"
 mkdir -p "${cpp_out}" "${python_out}" "${schema_out}"
 
 grpc_plugin="$(command -v grpc_cpp_plugin)"
 protoc \
     --proto_path="${proto_dir}" \
     --cpp_out="${cpp_out}" \
+    "${proto_files[@]}"
+protoc \
+    --proto_path="${proto_dir}" \
     --grpc_out="${cpp_out}" \
     --plugin=protoc-gen-grpc="${grpc_plugin}" \
-    "${proto_files[@]}"
+    "${service_proto_files[@]}"
 
 python3 -m grpc_tools.protoc \
     --proto_path="${proto_dir}" \
     --python_out="${python_out}" \
-    --grpc_python_out="${python_out}" \
     "${proto_files[@]}"
+python3 -m grpc_tools.protoc \
+    --proto_path="${proto_dir}" \
+    --grpc_python_out="${python_out}" \
+    "${service_proto_files[@]}"
 
 for generated in "${python_out}"/*_pb2.py "${python_out}"/*_pb2_grpc.py; do
     sed -i \
@@ -45,6 +59,7 @@ done
 touch "${python_out}/__init__.py"
 cp "${proto_files[@]}" "/output/"
 cp "${metric_catalog}" "${metric_catalog_digest}" "${schema_out}/"
+cp "${training_contract}" "${training_contract_digest}" "${schema_out}/"
 
 python3 - <<'PY'
 import json
