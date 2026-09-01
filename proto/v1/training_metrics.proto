@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package rl.training.metrics.v1;
+
+option cc_generic_services = false;
+
+import "common.proto";
+import "training.proto";
+
+// One immutable fact emitted only after a Learner update has published its
+// model and settled its input delivery.
+message TrainUpdateMetricFact {
+    reserved "behavior_model_version_min", "behavior_model_version_max";
+    string train_update_id = 1;
+    uint64 train_update_sequence = 2;
+    rl.training.v1.ModelIdentity published_model = 3;
+    string delivery_id = 4;
+    rl.common.v1.ContentDigest training_contract_digest = 5;
+    int64 cumulative_trained_samples = 6;
+    int64 actual_batch_size = 7;
+    optional uint64 minimum_behavior_model_step = 8;
+    optional uint64 maximum_behavior_model_step = 9;
+    repeated rl.training.v1.RawMetricSumCount ppo_statistics = 10;
+    string behavior_model_lineage_id = 11;
+    int64 requested_train_batch_size = 12;
+    int64 pool_draw_slot_count = 13;
+    int64 unique_item_count = 14;
+    int64 duplicate_item_slot_count = 15;
+    int64 sample_evaluation_count = 16;
+    int64 optimizer_step_count = 17;
+    rl.common.v1.ContentDigest rollout_estimator_profile_digest = 18;
+}
