@@ -1,5 +1,7 @@
 import importlib
+import json
 import os
+from pathlib import Path
 import sys
 import unittest
 
@@ -14,6 +16,10 @@ sys.path.insert(0, BINDINGS_DIR)
 common_pb2 = importlib.import_module("common_pb2")
 training_pb2 = importlib.import_module("training_pb2")
 maze_task_pb2 = importlib.import_module("maze_task_pb2")
+maze_metrics_pb2 = importlib.import_module("maze_metrics_pb2")
+training_metrics_pb2 = importlib.import_module("training_metrics_pb2")
+
+REPO_DIR = Path(__file__).resolve().parents[1]
 
 
 def round_trip(message):
@@ -34,122 +40,163 @@ def fill_service(service, component, instance):
     service.lifecycle_epoch = 1
 
 
-class TrainingWireTest(unittest.TestCase):
-    def test_fixed_component_messages_round_trip(self):
-        open_request = maze_task_pb2.OpenSessionReq()
-        fill_service(open_request.client, "maze-client", "client-fixed")
-        open_request.environment_instance_id = "environment-fixed"
-        open_request.request_id = "open-fixed"
+class TaskProtocolContractTest(unittest.TestCase):
+    def test_task_protocol_map_and_mask_round_trip(self):
+        request = maze_task_pb2.OpenSessionReq()
+        fill_service(request.client, "maze-client", "client-instance")
+        request.environment_instance_id = "environment-instance"
+        request.request_id = "request-id"
+        request.task_protocol.protocol_id = "rl.task.maze"
+        request.task_protocol.protocol_version = 1
+
+        response = maze_task_pb2.OpenSessionRsp()
+        response.task_protocol.CopyFrom(request.task_protocol)
+        response.environment.agent_count = 2
+        response.environment.map_id = "170001"
+        response.environment.episode_max_steps = 128
+        response.environment.action_mask_mode = (
+            maze_task_pb2.ACTION_MASK_MODE_REQUIRED
+        )
+
+        init_request = maze_task_pb2.InitReq()
+        init_request.map.map_id = response.environment.map_id
+        init_request.map.grid_columns = 2
+        init_request.map.grid_rows = 2
+        init_request.map.grid_size_microunits = 1_000_000
+        init_request.map.goal_grid_x = 1
+        init_request.map.goal_grid_y = 1
+        init_request.map.blocked_bitmap = b"\x00"
 
         update_request = maze_task_pb2.UpdateReq()
-        update_request.command.session_id = "session-fixed"
-        update_request.command.episode_id = "episode-fixed"
-        update_request.command.session_epoch = 1
-        update_request.command.sequence = 2
-        update_request.frame_id = 7
         state = update_request.agents.add()
-        state.agent_id = 3
-        state.position.x = 4.0
-        state.position.y = 5.0
-        state.last_move_blocked = False
-        state.executed_action_id = 2
+        state.agent_id = 0
+        state.executed_action_id = maze_task_pb2.MAZE_ACTION_RIGHT
+        action_values = maze_task_pb2.MazeAction.DESCRIPTOR.values
+        state.action_mask.extend(
+            value.number != maze_task_pb2.MAZE_ACTION_LEFT
+            for value in action_values
+        )
 
         update_response = maze_task_pb2.UpdateRsp()
-        update_response.reply.result = maze_task_pb2.COMMAND_RESULT_APPLIED
-        update_response.reply.applied_sequence = 2
-        update_response.reply.phase = maze_task_pb2.SESSION_PHASE_EPISODE_RUNNING
         action = update_response.action_batch.actions.add()
-        action.agent_id = 3
-        action.action_id = 6
+        action.agent_id = state.agent_id
+        action.action_id = maze_task_pb2.MAZE_ACTION_RIGHT
 
-        manifest = training_pb2.ModelArtifactManifest()
-        manifest.identity.model_lineage_id = "lineage-fixed"
-        manifest.identity.model_step = 4
-        fill_digest(manifest.identity.artifact_digest, "a" * 64)
-        fill_digest(manifest.identity.manifest_digest, "b" * 64)
-        manifest.size_bytes = 123
-        manifest.trained_samples = 456
-        fill_digest(manifest.training_config_digest, "e" * 64)
-        fill_digest(manifest.training_contract_digest, "c" * 64)
-        manifest.published_at_unix_ms = 1_700_000_000_000
-        manifest.rollout_estimator_profile.gamma = 0.99
-        manifest.rollout_estimator_profile.gae_lambda = 0.95
-        manifest.rollout_estimator_profile.tmax = 128
-        fill_digest(
-            manifest.rollout_estimator_profile.profile_digest, "f" * 64
-        )
-
-        register_model = training_pb2.RegisterModelReq()
-        register_model.manifest.CopyFrom(manifest)
-        register_model.contract.package_name = "rl-contracts"
-        register_model.local_artifact_path = "/models/0000004/SaveModel.onnx"
-
-        model_ack = training_pb2.AckModelReq()
-        fill_service(model_ack.aiserver, "aiserver", "aiserver-fixed")
-        model_ack.model.CopyFrom(manifest.identity)
-        model_ack.load_instance_id = "load-fixed"
-        model_ack.load_status = training_pb2.MODEL_LOAD_STATUS_LOADED
-
-        transition = training_pb2.ProcessedTransition()
-        transition.item_id = "item-fixed"
-        transition.observation.extend([1.0, 2.0])
-        transition.action = 6
-        transition.behavior_log_probability = -0.5
-        transition.behavior_value = 0.25
-        transition.advantage = 0.75
-        transition.value_target = 1.0
-        transition.behavior_model_step = 4
-        transition.created_at_unix_ms = 1_700_000_000_000
-
-        envelope = training_pb2.ProcessedTransitionEnvelope()
-        envelope.envelope_id = "envelope-fixed"
-        fill_digest(envelope.payload_digest, "d" * 64)
-        fill_service(envelope.producer, "aiserver", "aiserver-fixed")
-        fill_digest(envelope.training_contract_digest, "c" * 64)
-        envelope.behavior_model.CopyFrom(manifest.identity)
-        envelope.samples.add().CopyFrom(transition)
-
-        push_request = training_pb2.PushSamplesReq()
-        push_request.envelope.CopyFrom(envelope)
-
-        get_request = training_pb2.GetBatchReq()
-        get_request.requested_transitions = 1
-        get_request.timeout_ms = 10
-        fill_service(get_request.consumer, "learner", "learner-fixed")
-        fill_digest(get_request.required_training_contract_digest, "c" * 64)
-
-        get_response = training_pb2.GetBatchRsp()
-        get_response.items.add().transition.CopyFrom(transition)
-        get_response.items[0].insert_sequence = 1
-        get_response.items[0].inserted_at_unix_ms = 1_700_000_000_001
-        get_response.items[0].draw_count = 1
-        get_response.delivery_id = "delivery-fixed"
-        get_response.result = training_pb2.GET_BATCH_RESULT_LEASED
-        fill_service(get_response.sample_pool, "sample-pool", "pool-fixed")
-
-        ack_request = training_pb2.AckBatchReq()
-        fill_service(ack_request.consumer, "learner", "learner-fixed")
-        ack_request.delivery_id = "delivery-fixed"
-        ack_request.disposition = training_pb2.ACK_DISPOSITION_TRAINED
-        ack_request.train_update_id = "update-fixed"
-
-        messages = (
-            open_request,
-            update_request,
-            update_response,
-            manifest,
-            register_model,
-            model_ack,
-            envelope,
-            push_request,
-            get_request,
-            get_response,
-            ack_request,
-        )
-        for message in messages:
+        for message in (request, response, init_request, update_request, update_response):
             with self.subTest(message=message.DESCRIPTOR.full_name):
                 payload, parsed = round_trip(message)
                 self.assertGreater(len(payload), 0)
                 self.assertEqual(parsed, message)
 
-        self.assertTrue(transition.HasField("behavior_model_step"))
+        self.assertEqual(response.environment.map_id, init_request.map.map_id)
+        self.assertEqual(len(state.action_mask), len(action_values))
+        self.assertTrue(state.action_mask[action.action_id])
+
+
+class TrainingTransportContractTest(unittest.TestCase):
+    def test_transition_preserves_training_contract_and_opaque_mask(self):
+        transition = training_pb2.ProcessedTransition()
+        transition.item_id = "item-id"
+        transition.observation.extend([1.0, 2.0, 3.0])
+        transition.action = 1
+        transition.behavior_log_probability = -0.5
+        transition.behavior_value = 0.25
+        transition.advantage = 0.75
+        transition.value_target = 1.0
+        transition.behavior_model_step = 0
+        transition.created_at_unix_ms = 1_700_000_000_000
+        transition.action_mask.extend([True, True, False, True])
+
+        envelope = training_pb2.ProcessedTransitionEnvelope()
+        envelope.envelope_id = "envelope-id"
+        fill_digest(envelope.payload_digest, "d" * 64)
+        fill_service(envelope.producer, "aiserver", "aiserver-instance")
+        fill_digest(envelope.training_contract_digest, "c" * 64)
+        envelope.behavior_model.model_lineage_id = "lineage-id"
+        envelope.behavior_model.model_step = 0
+        envelope.samples.add().CopyFrom(transition)
+
+        _, parsed = round_trip(envelope)
+        self.assertEqual(parsed, envelope)
+        self.assertTrue(parsed.samples[0].HasField("behavior_model_step"))
+        self.assertEqual(
+            list(parsed.samples[0].action_mask), list(transition.action_mask)
+        )
+
+    def test_metric_transport_keeps_schema_owned_payload_opaque(self):
+        episode = maze_metrics_pb2.EpisodeMetricFact()
+        episode.environment_instance_id = "environment-instance"
+        episode.episode_id = "episode-id"
+        fill_digest(episode.training_contract_digest, "c" * 64)
+        agent = episode.agents.add()
+        agent.agent_id = 0
+        agent.episode_return = 1.25
+        agent.transition_count = 2
+        agent.reward_components.add(
+            field_id="goal_reward", sum=1.0, count=1
+        )
+
+        train_update = training_metrics_pb2.TrainUpdateMetricFact()
+        train_update.train_update_id = "update-id"
+        train_update.train_update_sequence = 1
+        train_update.published_model.model_lineage_id = "lineage-id"
+        train_update.published_model.model_step = 1
+        train_update.ppo_statistics.add(
+            field_id="policy_loss", sum=0.5, count=2
+        )
+
+        for schema_id, fact in (
+            ("maze.episode.metrics", episode),
+            ("rl.training.metrics", train_update),
+        ):
+            with self.subTest(schema_id=schema_id):
+                batch = training_pb2.MetricBatch()
+                batch.schema_identity.schema_id = schema_id
+                batch.schema_identity.schema_version = 1
+                event = batch.events.add()
+                event.event_sequence = 1
+                event.observed_at_unix_ms = 1_700_000_000_000
+                event.fact_payload = fact.SerializeToString(deterministic=True)
+                _, parsed = round_trip(batch)
+                parsed_fact = type(fact)()
+                parsed_fact.ParseFromString(parsed.events[0].fact_payload)
+                self.assertEqual(parsed_fact, fact)
+
+    def test_model_registration_does_not_imply_artifact_layout(self):
+        request = training_pb2.RegisterModelReq()
+        request.contract.package_name = "rl-contracts"
+        request.contract.package_version = "current"
+        request.local_artifact_path = "/configured-model-root/published-model.onnx"
+        request.manifest.identity.model_lineage_id = "lineage-id"
+        request.manifest.identity.model_step = 7
+        fill_digest(request.manifest.identity.artifact_digest, "a" * 64)
+        fill_digest(request.manifest.identity.manifest_digest, "b" * 64)
+        request.manifest.size_bytes = 123
+        request.manifest.trained_samples = 456
+        fill_digest(request.manifest.training_config_digest, "e" * 64)
+        fill_digest(request.manifest.training_contract_digest, "c" * 64)
+
+        _, parsed = round_trip(request)
+        self.assertEqual(parsed, request)
+
+
+class MetricSchemaContractTest(unittest.TestCase):
+    def test_metric_catalogs_have_separate_fact_owners(self):
+        catalogs = {}
+        for name in ("maze.episode.metrics", "training.metrics"):
+            path = REPO_DIR / "schemas" / f"{name}.json"
+            document = json.loads(path.read_text(encoding="utf-8"))
+            catalogs[document["schema_id"]] = document
+
+        self.assertEqual(
+            {field["fact"] for field in catalogs["maze.episode.metrics"]["fields"]},
+            {"agent_episode"},
+        )
+        self.assertEqual(
+            {field["fact"] for field in catalogs["rl.training.metrics"]["fields"]},
+            {"train_update"},
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
