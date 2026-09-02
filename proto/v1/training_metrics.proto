@@ -4,7 +4,6 @@ package rl.training.metrics.v1;
 
 option cc_generic_services = false;
 
-import "common.proto";
 import "training.proto";
 
 // One immutable fact emitted only after a Learner update has published its
@@ -15,7 +14,8 @@ message TrainUpdateMetricFact {
     uint64 train_update_sequence = 2;
     rl.training.v1.ModelIdentity published_model = 3;
     string delivery_id = 4;
-    rl.common.v1.ContentDigest training_contract_digest = 5;
+    reserved 5, 18;
+    reserved "training_contract_digest", "rollout_estimator_profile_digest";
     int64 cumulative_trained_samples = 6;
     int64 actual_batch_size = 7;
     optional uint64 minimum_behavior_model_step = 8;
@@ -28,5 +28,4 @@ message TrainUpdateMetricFact {
     int64 duplicate_item_slot_count = 15;
     int64 sample_evaluation_count = 16;
     int64 optimizer_step_count = 17;
-    rl.common.v1.ContentDigest rollout_estimator_profile_digest = 18;
 }

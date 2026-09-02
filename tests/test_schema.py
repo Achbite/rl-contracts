@@ -1,7 +1,5 @@
 import importlib
-import json
 import os
-from pathlib import Path
 import sys
 import unittest
 
@@ -13,25 +11,16 @@ if not BINDINGS_DIR:
     )
 sys.path.insert(0, BINDINGS_DIR)
 
-common_pb2 = importlib.import_module("common_pb2")
 training_pb2 = importlib.import_module("training_pb2")
 maze_task_pb2 = importlib.import_module("maze_task_pb2")
 maze_metrics_pb2 = importlib.import_module("maze_metrics_pb2")
 training_metrics_pb2 = importlib.import_module("training_metrics_pb2")
-
-REPO_DIR = Path(__file__).resolve().parents[1]
-
 
 def round_trip(message):
     payload = message.SerializeToString(deterministic=True)
     parsed = type(message)()
     parsed.ParseFromString(payload)
     return payload, parsed
-
-
-def fill_digest(digest, value):
-    digest.algorithm = common_pb2.DIGEST_ALGORITHM_SHA256
-    digest.hex = value
 
 
 def fill_service(service, component, instance):
@@ -46,11 +35,7 @@ class TaskProtocolContractTest(unittest.TestCase):
         fill_service(request.client, "maze-client", "client-instance")
         request.environment_instance_id = "environment-instance"
         request.request_id = "request-id"
-        request.task_protocol.protocol_id = "rl.task.maze"
-        request.task_protocol.protocol_version = 1
-
         response = maze_task_pb2.OpenSessionRsp()
-        response.task_protocol.CopyFrom(request.task_protocol)
         response.environment.agent_count = 2
         response.environment.map_id = "170001"
         response.environment.episode_max_steps = 128
@@ -92,9 +77,19 @@ class TaskProtocolContractTest(unittest.TestCase):
         self.assertEqual(len(state.action_mask), len(action_values))
         self.assertTrue(state.action_mask[action.action_id])
 
+    def test_abort_wait_is_explicit(self):
+        response = maze_task_pb2.AbortEpisodeRsp()
+        response.reply.result = maze_task_pb2.COMMAND_RESULT_WAIT
+        response.reply.applied_sequence = 7
+        response.wait.retry_after_ms = 25
+        _, parsed = round_trip(response)
+        self.assertEqual(parsed.reply.result, maze_task_pb2.COMMAND_RESULT_WAIT)
+        self.assertEqual(parsed.reply.applied_sequence, 7)
+        self.assertEqual(parsed.wait.retry_after_ms, 25)
+
 
 class TrainingTransportContractTest(unittest.TestCase):
-    def test_transition_preserves_training_contract_and_opaque_mask(self):
+    def test_transition_preserves_object_identity_and_opaque_mask(self):
         transition = training_pb2.ProcessedTransition()
         transition.item_id = "item-id"
         transition.observation.extend([1.0, 2.0, 3.0])
@@ -109,9 +104,7 @@ class TrainingTransportContractTest(unittest.TestCase):
 
         envelope = training_pb2.ProcessedTransitionEnvelope()
         envelope.envelope_id = "envelope-id"
-        fill_digest(envelope.payload_digest, "d" * 64)
         fill_service(envelope.producer, "aiserver", "aiserver-instance")
-        fill_digest(envelope.training_contract_digest, "c" * 64)
         envelope.behavior_model.model_lineage_id = "lineage-id"
         envelope.behavior_model.model_step = 0
         envelope.samples.add().CopyFrom(transition)
@@ -123,11 +116,10 @@ class TrainingTransportContractTest(unittest.TestCase):
             list(parsed.samples[0].action_mask), list(transition.action_mask)
         )
 
-    def test_metric_transport_keeps_schema_owned_payload_opaque(self):
+    def test_metric_transport_keeps_fact_kind_payload_opaque(self):
         episode = maze_metrics_pb2.EpisodeMetricFact()
         episode.environment_instance_id = "environment-instance"
         episode.episode_id = "episode-id"
-        fill_digest(episode.training_contract_digest, "c" * 64)
         agent = episode.agents.add()
         agent.agent_id = 0
         agent.episode_return = 1.25
@@ -145,17 +137,16 @@ class TrainingTransportContractTest(unittest.TestCase):
             field_id="policy_loss", sum=0.5, count=2
         )
 
-        for schema_id, fact in (
-            ("maze.episode.metrics", episode),
-            ("rl.training.metrics", train_update),
+        for fact_kind, fact in (
+            (training_pb2.METRIC_FACT_KIND_MAZE_EPISODE, episode),
+            (training_pb2.METRIC_FACT_KIND_TRAIN_UPDATE, train_update),
         ):
-            with self.subTest(schema_id=schema_id):
+            with self.subTest(fact_kind=fact_kind):
                 batch = training_pb2.MetricBatch()
-                batch.schema_identity.schema_id = schema_id
-                batch.schema_identity.schema_version = 1
                 event = batch.events.add()
                 event.event_sequence = 1
                 event.observed_at_unix_ms = 1_700_000_000_000
+                event.fact_kind = fact_kind
                 event.fact_payload = fact.SerializeToString(deterministic=True)
                 _, parsed = round_trip(batch)
                 parsed_fact = type(fact)()
@@ -164,39 +155,13 @@ class TrainingTransportContractTest(unittest.TestCase):
 
     def test_model_registration_does_not_imply_artifact_layout(self):
         request = training_pb2.RegisterModelReq()
-        request.contract.package_name = "rl-contracts"
-        request.contract.package_version = "current"
         request.local_artifact_path = "/configured-model-root/published-model.onnx"
         request.manifest.identity.model_lineage_id = "lineage-id"
         request.manifest.identity.model_step = 7
-        fill_digest(request.manifest.identity.artifact_digest, "a" * 64)
-        fill_digest(request.manifest.identity.manifest_digest, "b" * 64)
         request.manifest.size_bytes = 123
         request.manifest.trained_samples = 456
-        fill_digest(request.manifest.training_config_digest, "e" * 64)
-        fill_digest(request.manifest.training_contract_digest, "c" * 64)
 
         _, parsed = round_trip(request)
         self.assertEqual(parsed, request)
-
-
-class MetricSchemaContractTest(unittest.TestCase):
-    def test_metric_catalogs_have_separate_fact_owners(self):
-        catalogs = {}
-        for name in ("maze.episode.metrics", "training.metrics"):
-            path = REPO_DIR / "schemas" / f"{name}.json"
-            document = json.loads(path.read_text(encoding="utf-8"))
-            catalogs[document["schema_id"]] = document
-
-        self.assertEqual(
-            {field["fact"] for field in catalogs["maze.episode.metrics"]["fields"]},
-            {"agent_episode"},
-        )
-        self.assertEqual(
-            {field["fact"] for field in catalogs["rl.training.metrics"]["fields"]},
-            {"train_update"},
-        )
-
-
 if __name__ == "__main__":
     unittest.main()

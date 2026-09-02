@@ -34,8 +34,8 @@ bash build_artifact.sh task-maze
 ```
 
 `training/` contains task-neutral training, Sample Pool, model-distribution, and
-training-metric bindings. `task-maze/` contains the Client-AIServer Maze RPC, Maze
-Episode metrics, and the current Maze TrainingContract. Both are generated source
+training-metric bindings. `task-maze/` contains the Client-AIServer Maze RPC and
+Maze Episode metrics. Both are generated source
 artifacts and do not use the Docker platform as a compatibility or synchronization
 gate. The Sample Pool and Model Distributor binary artifacts still record their
 real build platform. Each build stages into a temporary directory before replacing
@@ -51,10 +51,18 @@ entrypoint and review the resulting consumer diffs:
 (cd ../rl-framework && bash sync_maze_protocol.sh)
 ```
 
-The training artifact is only a build input for Sample Pool and Model Distributor;
-Learner runtime binaries are staged by their separate artifact command. Runtime
-communication is governed by the Proto/TrainingContract business fields and
-digests, not source, generator, build-hash, or platform equality across repositories.
+When the task-neutral training protocol must be adopted explicitly, run:
+
+```bash
+(cd ../rl-framework && bash sync_training_protocol.sh)
+```
+
+The training protocol is the shared Proto input for Sample Pool, Model Distributor,
+AIServer, and Learner. The Sample Pool and Model Distributor binaries required by
+Learner are still staged by their separate artifact command. Runtime communication is
+governed only by Proto business fields, service lifecycles, object identities, and
+sequence/ACK semantics, not repository source, generator, version, digest, or platform
+equality.
 
 ## License
 
