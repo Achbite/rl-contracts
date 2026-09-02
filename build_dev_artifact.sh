@@ -6,7 +6,6 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 workspace_root="${RL_TRAINING_WORKSPACE:-$(cd "${repo_dir}/.." && pwd -P)}"
 version="$(tr -d '[:space:]' < "${repo_dir}/VERSION")"
 artifact_root="${workspace_root}/.workspace/dev-artifacts/rl-contracts"
-tool="${repo_dir}/scripts/artifact_manifest.py"
 builder_image="rl-training/contracts-dev-builder:${version}"
 profile="${1:-all}"
 
@@ -44,29 +43,23 @@ trap cleanup EXIT
 
 build_bundle() {
     local selected="$1"
-    local package
     local output_dir="${artifact_root}/${version}/${selected}/current"
     local -a required_files
     case "${selected}" in
         training)
-            package="rl-training-contracts"
             required_files=(
                 cpp/common.pb.cc cpp/training.pb.cc
                 cpp/training.grpc.pb.cc cpp/training_metrics.pb.cc
                 python/common_pb2.py python/training_pb2.py
                 python/training_pb2_grpc.py python/training_metrics_pb2.py
-                schemas/training.metrics.json
             )
             ;;
         task-maze)
-            package="rl-task-maze-contracts"
             required_files=(
                 cpp/common.pb.cc cpp/maze_task.pb.cc
                 cpp/maze_task.grpc.pb.cc cpp/maze_metrics.pb.cc
                 python/common_pb2.py python/maze_task_pb2.py
                 python/maze_task_pb2_grpc.py python/maze_metrics_pb2.py
-                schemas/maze.episode.metrics.json
-                schemas/training-contract.json
             )
             ;;
         *)
@@ -80,22 +73,9 @@ build_bundle() {
         --volume "${active_temp}:/output" \
         "${builder_image}" "${selected}" >&2
 
-    python3 "${tool}" finalize-contract \
-        --output "${active_temp}" \
-        --package "${package}" \
-        --version "${version}" \
-        --channel development
-    verify_args=(
-        python3 "${tool}" verify
-        --root "${active_temp}"
-        --package "${package}"
-        --version "${version}"
-        --channel development
-    )
     for required in "${required_files[@]}"; do
-        verify_args+=(--require-file "${required}")
+        test -f "${active_temp}/${required}"
     done
-    "${verify_args[@]}"
 
     mkdir -p "$(dirname "${output_dir}")"
     rm -rf "${output_dir}"

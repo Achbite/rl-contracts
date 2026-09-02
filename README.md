@@ -33,7 +33,7 @@ bash build_artifact.sh task-maze
 ```
 
 `training/` 包含任务无关的训练、样本池、模型分发和训练指标 bindings；`task-maze/` 包含
-Client↔AIServer Maze RPC、Maze Episode 指标与当前 Maze TrainingContract。二者都是生成源码，
+Client↔AIServer Maze RPC 与 Maze Episode 指标。二者都是生成源码，
 不以 Docker 平台作为兼容或同步门禁。Sample Pool 与 Model Distributor 的二进制制品仍由各自
 仓库记录真实构建平台。构建入口使用临时目录完成后再替换同版本输出；Git clean/dirty 与源码哈希
 不作为生成门禁。
@@ -47,9 +47,15 @@ Client↔AIServer Maze RPC、Maze Episode 指标与当前 Maze TrainingContract�
 (cd ../rl-framework && bash sync_maze_protocol.sh)
 ```
 
-训练协议制品只作为 Sample Pool/Model Distributor 的构建输入；Learner 运行时二进制由独立制品
-脚本同步。运行通信由 Proto/TrainingContract 的业务字段和 digest 决定，不要求各仓源码、生成器、
-构建哈希或平台值相等。
+任务无关的训练协议需要明确更新时，执行：
+
+```bash
+(cd ../rl-framework && bash sync_training_protocol.sh)
+```
+
+训练协议是 Sample Pool、Model Distributor、AIServer 与 Learner 的共同 Proto 输入；Learner 所需的
+Sample Pool/Model Distributor 二进制仍由独立制品脚本装配。运行通信只由 Proto 中的业务字段、
+服务生命周期、对象身份和序列/ACK 语义决定，不要求各仓源码、生成器、版本、摘要或平台值相等。
 
 ## License
 

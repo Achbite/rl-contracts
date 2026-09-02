@@ -11,7 +11,6 @@ fi
 proto_dir="/source/proto/v1"
 cpp_out="/output/cpp"
 python_out="/output/python"
-schema_out="/output/schemas"
 
 case "${profile}" in
     training)
@@ -21,10 +20,6 @@ case "${profile}" in
             "${proto_dir}/training_metrics.proto"
         )
         service_proto_files=("${proto_dir}/training.proto")
-        schema_files=(
-            "/source/schemas/training.metrics.json"
-            "/source/schemas/training.metrics.sha256"
-        )
         ;;
     task-maze)
         proto_files=(
@@ -33,12 +28,6 @@ case "${profile}" in
             "${proto_dir}/maze_metrics.proto"
         )
         service_proto_files=("${proto_dir}/maze_task.proto")
-        schema_files=(
-            "/source/schemas/maze.episode.metrics.json"
-            "/source/schemas/maze.episode.metrics.sha256"
-            "/source/schemas/training-contract.json"
-            "/source/schemas/training-contract.sha256"
-        )
         ;;
     all)
         proto_files=(
@@ -52,14 +41,6 @@ case "${profile}" in
             "${proto_dir}/training.proto"
             "${proto_dir}/maze_task.proto"
         )
-        schema_files=(
-            "/source/schemas/maze.episode.metrics.json"
-            "/source/schemas/maze.episode.metrics.sha256"
-            "/source/schemas/training.metrics.json"
-            "/source/schemas/training.metrics.sha256"
-            "/source/schemas/training-contract.json"
-            "/source/schemas/training-contract.sha256"
-        )
         ;;
     *)
         echo "unknown Contracts generation profile: ${profile}" >&2
@@ -70,10 +51,7 @@ esac
 for proto_file in "${proto_files[@]}"; do
     test -f "${proto_file}"
 done
-for schema_file in "${schema_files[@]}"; do
-    test -f "${schema_file}"
-done
-mkdir -p "${cpp_out}" "${python_out}" "${schema_out}"
+mkdir -p "${cpp_out}" "${python_out}"
 
 grpc_plugin="$(command -v grpc_cpp_plugin)"
 protoc \
@@ -106,8 +84,6 @@ for generated in "${python_out}"/*_pb2.py "${python_out}"/*_pb2_grpc.py; do
 done
 touch "${python_out}/__init__.py"
 cp "${proto_files[@]}" "/output/"
-cp "${schema_files[@]}" "${schema_out}/"
-
 # Generated artifacts are bind-mounted into development containers. Docker's
 # user-namespace mapping must not depend on the host file owner to read them.
 find /output -type f -exec chmod 0644 {} +
