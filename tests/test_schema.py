@@ -117,41 +117,30 @@ class TrainingTransportContractTest(unittest.TestCase):
         )
 
     def test_metric_transport_keeps_fact_kind_payload_opaque(self):
-        episode = maze_metrics_pb2.EpisodeMetricFact()
-        episode.environment_instance_id = "environment-instance"
-        episode.episode_id = "episode-id"
-        agent = episode.agents.add()
-        agent.agent_id = 0
-        agent.episode_return = 1.25
-        agent.transition_count = 2
-        agent.reward_components.add(
-            field_id="goal_reward", sum=1.0, count=1
+        record = training_pb2.RegisteredMetricRecord()
+        record.definitions.add(
+            metric_id="task.balance.reward", display_name="Balance reward", unit="reward",
+            scope="episode", value_type=training_pb2.METRIC_VALUE_TYPE_SUM_COUNT,
+            aggregation=training_pb2.METRIC_AGGREGATION_MEAN, denominator="transition",
         )
-
-        train_update = training_metrics_pb2.TrainUpdateMetricFact()
-        train_update.train_update_id = "update-id"
-        train_update.train_update_sequence = 1
-        train_update.published_model.model_lineage_id = "lineage-id"
-        train_update.published_model.model_step = 1
-        train_update.ppo_statistics.add(
-            field_id="policy_loss", sum=0.5, count=2
+        point = record.points.add(metric_id="task.balance.reward")
+        point.sum_count.sum = 1.25
+        point.sum_count.count = 2
+        record.definitions.add(
+            metric_id="update.sequence", display_name="Update", unit="count", scope="update",
+            value_type=training_pb2.METRIC_VALUE_TYPE_UNSIGNED,
+            aggregation=training_pb2.METRIC_AGGREGATION_LATEST,
         )
-
-        for fact_kind, fact in (
-            (training_pb2.METRIC_FACT_KIND_MAZE_EPISODE, episode),
-            (training_pb2.METRIC_FACT_KIND_TRAIN_UPDATE, train_update),
-        ):
-            with self.subTest(fact_kind=fact_kind):
-                batch = training_pb2.MetricBatch()
-                event = batch.events.add()
-                event.event_sequence = 1
-                event.observed_at_unix_ms = 1_700_000_000_000
-                event.fact_kind = fact_kind
-                event.fact_payload = fact.SerializeToString(deterministic=True)
-                _, parsed = round_trip(batch)
-                parsed_fact = type(fact)()
-                parsed_fact.ParseFromString(parsed.events[0].fact_payload)
-                self.assertEqual(parsed_fact, fact)
+        record.points.add(metric_id="update.sequence", unsigned_value=(1 << 64) - 1)
+        batch = training_pb2.MetricBatch()
+        event = batch.events.add(
+            event_sequence=1, observed_at_unix_ms=1700000000000,
+            fact_kind=training_pb2.METRIC_FACT_KIND_REGISTERED_METRICS,
+            fact_payload=record.SerializeToString(deterministic=True),
+        )
+        _, parsed = round_trip(batch)
+        self.assertEqual(parsed.events[0].fact_payload, event.fact_payload)
+        self.assertEqual(training_pb2.RegisteredMetricRecord.FromString(parsed.events[0].fact_payload), record)
 
     def test_model_registration_does_not_imply_artifact_layout(self):
         request = training_pb2.RegisterModelReq()
