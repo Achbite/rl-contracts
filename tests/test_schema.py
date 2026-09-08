@@ -11,10 +11,14 @@ if not BINDINGS_DIR:
     )
 sys.path.insert(0, BINDINGS_DIR)
 
-training_pb2 = importlib.import_module("training_pb2")
-maze_task_pb2 = importlib.import_module("maze_task_pb2")
-maze_metrics_pb2 = importlib.import_module("maze_metrics_pb2")
-training_metrics_pb2 = importlib.import_module("training_metrics_pb2")
+training_pb2 = importlib.import_module("proto.training.training_pb2")
+task_session_pb2 = importlib.import_module("proto.communication.session_pb2")
+maze_task_pb2 = importlib.import_module("proto.tasks.maze.task_pb2")
+maze_metrics_pb2 = importlib.import_module("proto.tasks.maze.metrics_pb2")
+training_metrics_pb2 = importlib.import_module("proto.metrics.training_pb2")
+
+metric_registry_pb2 = importlib.import_module("proto.metrics.registry_pb2")
+metric_transport_pb2 = importlib.import_module("proto.metrics.transport_pb2")
 
 def round_trip(message):
     payload = message.SerializeToString(deterministic=True)
@@ -79,11 +83,11 @@ class TaskProtocolContractTest(unittest.TestCase):
 
     def test_abort_wait_is_explicit(self):
         response = maze_task_pb2.AbortEpisodeRsp()
-        response.reply.result = maze_task_pb2.COMMAND_RESULT_WAIT
+        response.reply.result = task_session_pb2.COMMAND_RESULT_WAIT
         response.reply.applied_sequence = 7
         response.wait.retry_after_ms = 25
         _, parsed = round_trip(response)
-        self.assertEqual(parsed.reply.result, maze_task_pb2.COMMAND_RESULT_WAIT)
+        self.assertEqual(parsed.reply.result, task_session_pb2.COMMAND_RESULT_WAIT)
         self.assertEqual(parsed.reply.applied_sequence, 7)
         self.assertEqual(parsed.wait.retry_after_ms, 25)
 
@@ -117,30 +121,30 @@ class TrainingTransportContractTest(unittest.TestCase):
         )
 
     def test_metric_transport_keeps_fact_kind_payload_opaque(self):
-        record = training_pb2.RegisteredMetricRecord()
+        record = metric_registry_pb2.RegisteredMetricRecord()
         record.definitions.add(
             metric_id="task.balance.reward", display_name="Balance reward", unit="reward",
-            scope="episode", value_type=training_pb2.METRIC_VALUE_TYPE_SUM_COUNT,
-            aggregation=training_pb2.METRIC_AGGREGATION_MEAN, denominator="transition",
+            scope="episode", value_type=metric_registry_pb2.METRIC_VALUE_TYPE_SUM_COUNT,
+            aggregation=metric_registry_pb2.METRIC_AGGREGATION_MEAN, denominator="transition",
         )
         point = record.points.add(metric_id="task.balance.reward")
         point.sum_count.sum = 1.25
         point.sum_count.count = 2
         record.definitions.add(
             metric_id="update.sequence", display_name="Update", unit="count", scope="update",
-            value_type=training_pb2.METRIC_VALUE_TYPE_UNSIGNED,
-            aggregation=training_pb2.METRIC_AGGREGATION_LATEST,
+            value_type=metric_registry_pb2.METRIC_VALUE_TYPE_UNSIGNED,
+            aggregation=metric_registry_pb2.METRIC_AGGREGATION_LATEST,
         )
         record.points.add(metric_id="update.sequence", unsigned_value=(1 << 64) - 1)
-        batch = training_pb2.MetricBatch()
+        batch = metric_transport_pb2.MetricBatch()
         event = batch.events.add(
             event_sequence=1, observed_at_unix_ms=1700000000000,
-            fact_kind=training_pb2.METRIC_FACT_KIND_REGISTERED_METRICS,
+            fact_kind=metric_transport_pb2.METRIC_FACT_KIND_REGISTERED_METRICS,
             fact_payload=record.SerializeToString(deterministic=True),
         )
         _, parsed = round_trip(batch)
         self.assertEqual(parsed.events[0].fact_payload, event.fact_payload)
-        self.assertEqual(training_pb2.RegisteredMetricRecord.FromString(parsed.events[0].fact_payload), record)
+        self.assertEqual(metric_registry_pb2.RegisteredMetricRecord.FromString(parsed.events[0].fact_payload), record)
 
     def test_model_registration_does_not_imply_artifact_layout(self):
         request = training_pb2.RegisterModelReq()

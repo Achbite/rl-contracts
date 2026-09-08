@@ -4,7 +4,8 @@ package rl.training.metrics.v1;
 
 option cc_generic_services = false;
 
-import "training.proto";
+import "proto/training/model_identity.proto";
+import "proto/metrics/registry.proto";
 
 // One immutable fact emitted only after a Learner update has published its
 // model and settled its input delivery.

@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.16)
+project(rl_client_sdk LANGUAGES CXX)
+find_package(Protobuf REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GRPC REQUIRED grpc++)
+add_library(rl_sdk INTERFACE)
+add_library(rl_sdk::sdk ALIAS rl_sdk)
+target_compile_features(rl_sdk INTERFACE cxx_std_17)
+target_include_directories(rl_sdk INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include ${GRPC_INCLUDE_DIRS})
+target_link_libraries(rl_sdk INTERFACE protobuf::libprotobuf ${GRPC_LIBRARIES} pthread)
+# The task Binding target compiles its generated task and communication bindings.

@@ -2,6 +2,12 @@
 
 [简体中文](README.md) | English
 
+Protos are grouped under `common`, `communication`, `training`, `metrics`, and
+`tasks/<task>`, without numbered version directories. Generated bindings, artifacts
+and consumer snapshots preserve this layout. See [Protocol layout](proto/README.md)
+for ownership and dependencies. Shared communication and metrics are separate
+from task-specific protocols.
+
 ## 1. Run tests
 
 ```bash
@@ -11,7 +17,7 @@ bash ./test.sh
 `test.sh` is the repository's unified test entrypoint and runs the current
 development checks from an explicit allowlist.
 
-## 2. Create the 0.15.0 artifact
+## 2. Create the current artifact
 
 Build independent training-wire and Maze task-protocol source artifacts:
 
@@ -22,8 +28,8 @@ bash build_artifact.sh
 Output:
 
 ```text
-../.workspace/artifacts/rl-contracts/0.15.0/training/
-../.workspace/artifacts/rl-contracts/0.15.0/task-maze/
+../.workspace/artifacts/rl-contracts/training/
+../.workspace/artifacts/rl-contracts/task-maze/
 ```
 
 Build either target explicitly when only one is needed:
@@ -39,7 +45,7 @@ Maze Episode metrics. Both are generated source
 artifacts and do not use the Docker platform as a compatibility or synchronization
 gate. The Sample Pool and Model Distributor binary artifacts still record their
 real build platform. Each build stages into a temporary directory before replacing
-the same-version output. Git state and source hashes are not generation gates.
+the current output for that profile. Git state and source hashes are not generation gates.
 
 ## 3. Sync consumers
 
