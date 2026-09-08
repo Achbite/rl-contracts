@@ -21,7 +21,7 @@ case "${profile}" in
         ;;
 esac
 
-mkdir -p "${artifact_root}/${version}"
+mkdir -p "${artifact_root}"
 
 docker build \
     --file "${repo_dir}/Dockerfile.build" \
@@ -38,31 +38,19 @@ trap cleanup EXIT
 
 build_bundle() {
     local selected="$1"
-    local output_dir="${artifact_root}/${version}/${selected}"
-    local -a required_files
-    case "${selected}" in
-        training)
-            required_files=(
-                common.proto training.proto training_metrics.proto
-                cpp/common.pb.cc cpp/training.pb.cc cpp/training.grpc.pb.cc
-                cpp/training_metrics.pb.cc
-                python/common_pb2.py python/training_pb2.py
-                python/training_pb2_grpc.py python/training_metrics_pb2.py
-            )
-            ;;
-        task-maze)
-            required_files=(
-                common.proto maze_task.proto maze_metrics.proto
-                cpp/common.pb.cc cpp/maze_task.pb.cc
-                cpp/maze_task.grpc.pb.cc cpp/maze_metrics.pb.cc
-                python/common_pb2.py python/maze_task_pb2.py
-                python/maze_task_pb2_grpc.py python/maze_metrics_pb2.py
-            )
-            ;;
-        *)
-            return 2
-            ;;
-    esac
+    local output_dir="${artifact_root}/${selected}"
+    source "${repo_dir}/scripts/profiles.sh"
+    select_contract_profile "${selected}"
+    local -a required_files=("sdk/include/rl_sdk/session.h" "sdk/include/rl_sdk/metric_catalog.h")
+    local proto_file stem
+    for proto_file in "${proto_files[@]}"; do
+        stem="${proto_file%.proto}"
+        required_files+=("${proto_file}" "cpp/${stem}.pb.cc" "cpp/${stem}.pb.h" "python/${stem}_pb2.py")
+    done
+    for proto_file in "${service_proto_files[@]}"; do
+        stem="${proto_file%.proto}"
+        required_files+=("cpp/${stem}.grpc.pb.cc" "cpp/${stem}.grpc.pb.h" "python/${stem}_pb2_grpc.py")
+    done
 
     active_temp="$(mktemp -d "${artifact_root}/.tmp-contracts.XXXXXX")"
     docker run --rm \

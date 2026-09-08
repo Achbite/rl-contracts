@@ -10,18 +10,17 @@ if [ "$#" -ne 0 ]; then
 fi
 
 cd "${repo_dir}"
+source scripts/profiles.sh
+select_contract_profile all
 
 bindings_dir="$(mktemp -d "${TMPDIR:-/tmp}/rl-contracts-test.XXXXXX")"
 trap 'rm -rf "${bindings_dir}"' EXIT
 
 python3 -m grpc_tools.protoc \
-    --proto_path="${repo_dir}/proto/v1" \
+    --proto_path="${repo_dir}" \
     --python_out="${bindings_dir}" \
-    "${repo_dir}/proto/v1/common.proto" \
-    "${repo_dir}/proto/v1/training.proto" \
-    "${repo_dir}/proto/v1/maze_task.proto" \
-    "${repo_dir}/proto/v1/maze_metrics.proto" \
-    "${repo_dir}/proto/v1/training_metrics.proto"
+    "${proto_files[@]}"
+find "${bindings_dir}/proto" -type d -exec touch '{}/__init__.py' \;
 
 PYTHONDONTWRITEBYTECODE=1 \
 RL_CONTRACT_TEST_BINDINGS_DIR="${bindings_dir}" \
