@@ -13,8 +13,8 @@ numbered version directories.
 | `metrics/catalog.proto` | Independent read-only field discovery. |
 | `metrics/transport.proto` | Opaque metric events, batches, cursors, gaps, final and ACK. |
 | `metrics/training.proto` | Learner-owned Train Update measurements. |
-| `tasks/maze/task.proto` | Maze environment, observation/action, task outcomes and typed Maze RPCs. |
-| `tasks/maze/metrics.proto` | Maze-owned Episode calculation facts. |
+| `maze/maze.proto` | Maze environment, observation/action, task outcomes and typed Maze RPCs. |
+| `maze/metrics.proto` | Maze-owned Episode calculation facts. |
 
 Task RPCs import common identity and communication lifecycle types. Shared
 metric registry, catalog and transport do not import task or training RPCs.

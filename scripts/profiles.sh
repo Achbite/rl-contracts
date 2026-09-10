@@ -19,9 +19,10 @@ select_contract_profile() {
     )
     local -a task_protos=(
         proto/communication/session.proto
-        proto/tasks/maze/task.proto
-        proto/tasks/maze/metrics.proto
+        proto/maze/maze.proto
+        proto/maze/metrics.proto
     )
+    task_service_proto_files=()
     case "${selected}" in
         training)
             proto_files=("${training_protos[@]}")
@@ -29,11 +30,13 @@ select_contract_profile() {
             ;;
         task-maze)
             proto_files=(proto/common/identity.proto proto/metrics/registry.proto "${task_protos[@]}")
-            service_proto_files=(proto/tasks/maze/task.proto)
+            task_service_proto_files=(proto/maze/maze.proto)
+            service_proto_files=("${task_service_proto_files[@]}")
             ;;
         all)
             proto_files=("${training_protos[@]}" "${task_protos[@]}")
-            service_proto_files=("${training_services[@]}" proto/tasks/maze/task.proto)
+            task_service_proto_files=(proto/maze/maze.proto)
+            service_proto_files=("${training_services[@]}" "${task_service_proto_files[@]}")
             ;;
         *)
             echo "unknown Contracts profile: ${selected}" >&2
