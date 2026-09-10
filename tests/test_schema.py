@@ -13,8 +13,8 @@ sys.path.insert(0, BINDINGS_DIR)
 
 training_pb2 = importlib.import_module("proto.training.training_pb2")
 task_session_pb2 = importlib.import_module("proto.communication.session_pb2")
-maze_task_pb2 = importlib.import_module("proto.tasks.maze.task_pb2")
-maze_metrics_pb2 = importlib.import_module("proto.tasks.maze.metrics_pb2")
+maze_task_pb2 = importlib.import_module("proto.maze.maze_pb2")
+maze_metrics_pb2 = importlib.import_module("proto.maze.metrics_pb2")
 training_metrics_pb2 = importlib.import_module("proto.metrics.training_pb2")
 
 metric_registry_pb2 = importlib.import_module("proto.metrics.registry_pb2")

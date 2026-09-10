@@ -24,10 +24,19 @@ python3 -m grpc_tools.protoc --proto_path=/source \
 python3 -m grpc_tools.protoc --proto_path=/source \
     --grpc_python_out="${python_out}" "${service_proto_files[@]}"
 
+# Task RPC bindings are derived from the same descriptors as the gRPC stubs.
+if [ "${#task_service_proto_files[@]}" -gt 0 ]; then
+    protoc --proto_path=/source \
+        --plugin=protoc-gen-rl_sdk=/source/sdk/tools/protoc-gen-rl-sdk \
+        --rl_sdk_out="${cpp_out}" "${task_service_proto_files[@]}"
+fi
+
 # Generated imports preserve the category package in every consumer.
 find "${python_out}" -type d -exec touch '{}/__init__.py' \;
-cp -R /source/sdk/include/rl_sdk "${cpp_out}/rl_sdk"
-cp -R /source/sdk /output/sdk
+mkdir -p "${cpp_out}/rl_sdk" /output/sdk
+cp -R /source/sdk/include/rl_sdk/. "${cpp_out}/rl_sdk/"
+cp -R /source/sdk/. /output/sdk/
 cp --parents "${proto_files[@]}" /output/
 find /output -type f -exec chmod 0644 {} +
 find /output -type d -exec chmod 0755 {} +
+chmod 0755 /output/sdk/tools/protoc-gen-rl-sdk
