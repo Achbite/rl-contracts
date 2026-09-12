@@ -25,4 +25,5 @@ find "${bindings_dir}/proto" -type d -exec touch '{}/__init__.py' \;
 PYTHONDONTWRITEBYTECODE=1 \
 RL_CONTRACT_TEST_BINDINGS_DIR="${bindings_dir}" \
 PYTHONPATH="${repo_dir}${PYTHONPATH:+:${PYTHONPATH}}" \
-exec python3 -m unittest -v tests.test_schema
+exec python3 -m unittest -v tests.test_schema \
+    tests.test_sdk_distribution.SdkDistributionTest.test_exported_sdk_builds_two_independent_consumers

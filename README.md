@@ -2,7 +2,7 @@
 
 简体中文 | [English](README.en.md)
 
-Proto 按 `common / communication / training / metrics / tasks/<任务名>` 分类，
+Proto 按 `common / communication / training / metrics / <任务名>` 分类，
 不设置固定版本编号目录；生成代码、制品与消费者快照保留相同分类结构。
 具体职责和依赖见 [Proto 目录说明](proto/README.md)。公共通信与指标协议不放入任务 Proto。
 
@@ -12,7 +12,7 @@ Proto 按 `common / communication / training / metrics / tasks/<任务名>` 分�
 bash ./test.sh
 ```
 
-`test.sh` 是本仓库的统一测试入口，并按显式清单运行当前开发校验。
+`test.sh` 是本仓库的统一测试入口，并按显式清单运行当前开发校验。SDK 分发用例需要 C++17、CMake、Ninja、Protobuf / gRPC C++、protoc、grpc_cpp_plugin 和 Python Protobuf；它从正式导出包分别编译两端，并验证任务 import 的实际往返，不需要训练环境。
 
 ## 2. 生成当前制品
 
@@ -42,7 +42,17 @@ Client↔AIServer Maze RPC 与 Maze Episode 指标。二者都是生成源码，
 仓库记录真实构建平台。构建入口使用临时目录完成后再替换对应 profile 的当前输出；Git clean/dirty 与源码哈希
 不作为生成门禁。
 
-## 3. 同步消费者
+## 3. 独立 RL-SDK 与任务本地编译
+
+```bash
+bash sdk/build_artifact.sh /path/to/output
+```
+
+`RL-SDK.tar.gz` 包含公共通信 Proto、C++ SDK、CMake 入口和生成器。任务双方共享约定的任务 Proto，
+各自在本地调用 `rl_sdk_generate_task` 生成 `pb.cc`、`grpc.pb.cc` 与 `sdk.pb.h`；导入的任务消息会自动一并编译。
+新任务不需要登记本仓 `task-maze` 之类的 profile。具体接口见 [RL-SDK](sdk/README.md)。
+
+## 4. 同步消费者
 
 普通构建与 `make shell` 都不会同步协议。需要明确采用此仓的 Maze 协议 release 时，从 Framework
 执行一次显式同步并审查各消费者仓的 diff：

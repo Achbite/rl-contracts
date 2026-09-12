@@ -41,7 +41,9 @@ build_bundle() {
     local output_dir="${artifact_root}/${selected}"
     source "${repo_dir}/scripts/profiles.sh"
     select_contract_profile "${selected}"
-    local -a required_files=("sdk/CMakeLists.txt" "sdk/include/rl_sdk/task_client.h" "sdk/include/rl_sdk/session.h" "sdk/include/rl_sdk/metric_catalog.h")
+    local -a required_files=("sdk/CMakeLists.txt" "sdk/include/rl_sdk/task_client.h" "sdk/include/rl_sdk/session.h" "sdk/include/rl_sdk/metric_catalog.h"
+        "sdk/tools/generate-task" "sdk/tools/protoc-gen-rl-sdk"
+        "sdk/proto/common/identity.proto" "sdk/proto/communication/session.proto")
     local proto_file stem
     for proto_file in "${proto_files[@]}"; do
         stem="${proto_file%.proto}"

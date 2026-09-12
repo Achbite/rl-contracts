@@ -54,7 +54,7 @@ class TaskProtocolContractTest(unittest.TestCase):
         init_request.map.grid_size_microunits = 1_000_000
         init_request.map.goal_grid_x = 1
         init_request.map.goal_grid_y = 1
-        init_request.map.blocked_bitmap = b"\x00"
+        init_request.map.blocked_bitmap = b"\x00" * 4
 
         update_request = maze_task_pb2.UpdateReq()
         state = update_request.agents.add()

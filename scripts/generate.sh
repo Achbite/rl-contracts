@@ -35,8 +35,13 @@ fi
 find "${python_out}" -type d -exec touch '{}/__init__.py' \;
 mkdir -p "${cpp_out}/rl_sdk" /output/sdk
 cp -R /source/sdk/include/rl_sdk/. "${cpp_out}/rl_sdk/"
-cp -R /source/sdk/. /output/sdk/
+mkdir -p /output/sdk/tools /output/sdk/proto/common /output/sdk/proto/communication
+cp /source/sdk/CMakeLists.txt /source/sdk/README.md /source/LICENSE /output/sdk/
+cp -R /source/sdk/include /output/sdk/
+cp /source/sdk/tools/generate-task /source/sdk/tools/protoc-gen-rl-sdk /output/sdk/tools/
+cp /source/proto/common/identity.proto /output/sdk/proto/common/
+cp /source/proto/communication/session.proto /output/sdk/proto/communication/
 cp --parents "${proto_files[@]}" /output/
 find /output -type f -exec chmod 0644 {} +
 find /output -type d -exec chmod 0755 {} +
-chmod 0755 /output/sdk/tools/protoc-gen-rl-sdk
+chmod 0755 /output/sdk/tools/protoc-gen-rl-sdk /output/sdk/tools/generate-task

@@ -1,0 +1,3 @@
+syntax = "proto3";
+package sdk.example;
+message State { double observation = 1; string label = 2; /* added field */ }
