@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 3.16)
+project(sdk_consumer LANGUAGES CXX)
+add_subdirectory("${RL_SDK_DIR}" sdk)
+rl_sdk_generate_task(example_protocol PROTO proto/example/task.proto IMPORT_DIRS "${CMAKE_CURRENT_SOURCE_DIR}")
+add_executable(consumer "${CONSUMER_ROLE}.cpp")
+target_link_libraries(consumer PRIVATE example_protocol)

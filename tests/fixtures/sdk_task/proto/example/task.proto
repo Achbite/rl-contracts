@@ -1,0 +1,31 @@
+syntax = "proto3";
+package sdk.example;
+import "proto/common/identity.proto";
+import "proto/communication/session.proto";
+import "proto/example/state.proto";
+message OpenSessionReq { rl.common.v1.ServiceInstanceIdentity client = 1; string environment_instance_id = 2; string request_id = 3; }
+message OpenSessionRsp { rl.session.v1.CommandReply reply = 1; string session_id = 2; uint64 session_epoch = 3; rl.common.v1.ServiceInstanceIdentity aiserver = 4; }
+message Assignment { string episode_id = 1; }
+message Complete { string message = 1; }
+message Wait { int32 retry_after_ms = 1; }
+message InitReq { rl.session.v1.CommandIdentity command = 1; }
+message InitRsp { rl.session.v1.CommandReply reply = 1; }
+message BeginEpisodeReq { rl.session.v1.CommandIdentity command = 1; }
+message BeginEpisodeRsp { rl.session.v1.CommandReply reply = 1; Assignment assignment = 2; Complete task_complete = 3; }
+message UpdateReq { rl.session.v1.CommandIdentity command = 1; State state = 2; }
+message UpdateRsp { rl.session.v1.CommandReply reply = 1; State state = 2; Wait wait = 3; }
+message EndEpisodeReq { rl.session.v1.CommandIdentity command = 1; }
+message EndEpisodeRsp { rl.session.v1.CommandReply reply = 1; }
+message AbortEpisodeReq { rl.session.v1.CommandIdentity command = 1; }
+message AbortEpisodeRsp { rl.session.v1.CommandReply reply = 1; Wait wait = 2; }
+message CloseSessionReq { rl.session.v1.CommandIdentity command = 1; }
+message CloseSessionRsp { rl.session.v1.CommandReply reply = 1; }
+service ExampleService {
+rpc OpenSession(OpenSessionReq) returns (OpenSessionRsp);
+rpc Init(InitReq) returns (InitRsp);
+rpc BeginEpisode(BeginEpisodeReq) returns (BeginEpisodeRsp);
+rpc Update(UpdateReq) returns (UpdateRsp);
+rpc EndEpisode(EndEpisodeReq) returns (EndEpisodeRsp);
+rpc AbortEpisode(AbortEpisodeReq) returns (AbortEpisodeRsp);
+rpc CloseSession(CloseSessionReq) returns (CloseSessionRsp);
+}

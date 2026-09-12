@@ -3,7 +3,7 @@
 [简体中文](README.md) | English
 
 Protos are grouped under `common`, `communication`, `training`, `metrics`, and
-`tasks/<task>`, without numbered version directories. Generated bindings, artifacts
+`<task>`, without numbered version directories. Generated bindings, artifacts
 and consumer snapshots preserve this layout. See [Protocol layout](proto/README.md)
 for ownership and dependencies. Shared communication and metrics are separate
 from task-specific protocols.
@@ -15,7 +15,7 @@ bash ./test.sh
 ```
 
 `test.sh` is the repository's unified test entrypoint and runs the current
-development checks from an explicit allowlist.
+development checks from an explicit allowlist. The SDK distribution case needs C++17, CMake, Ninja, Protobuf / gRPC C++, protoc, grpc_cpp_plugin, and Python Protobuf. It builds both consumers from the exported package and exercises imported task fields through real RPC without a training environment.
 
 ## 2. Create the current artifact
 
@@ -47,7 +47,19 @@ gate. The Sample Pool and Model Distributor binary artifacts still record their
 real build platform. Each build stages into a temporary directory before replacing
 the current output for that profile. Git state and source hashes are not generation gates.
 
-## 3. Sync consumers
+## 3. Standalone RL-SDK and local task generation
+
+```bash
+bash sdk/build_artifact.sh /path/to/output
+```
+
+`RL-SDK.tar.gz` contains the shared communication Proto sources, C++ SDK, CMake
+entrypoint and generators. Both task teams compile their agreed task Proto and
+its imports locally through `rl_sdk_generate_task`, producing `pb.cc`,
+`grpc.pb.cc` and `sdk.pb.h`. A new task does not need a central task profile.
+See [RL-SDK](sdk/README.md) for the build API and lifecycle contract.
+
+## 4. Sync consumers
 
 Normal builds and `make shell` never synchronize protocols. When a checkout is
 intentionally adopting this repository's Maze release, run the explicit Framework
