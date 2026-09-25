@@ -33,14 +33,9 @@ fi
 
 # Generated imports preserve the category package in every consumer.
 find "${python_out}" -type d -exec touch '{}/__init__.py' \;
-mkdir -p "${cpp_out}/rl_sdk" /output/sdk
-cp -R /source/sdk/include/rl_sdk/. "${cpp_out}/rl_sdk/"
-mkdir -p /output/sdk/tools /output/sdk/proto/common /output/sdk/proto/communication
-cp /source/sdk/CMakeLists.txt /source/sdk/README.md /source/LICENSE /output/sdk/
-cp -R /source/sdk/include /output/sdk/
-cp /source/sdk/tools/generate-task /source/sdk/tools/protoc-gen-rl-sdk /output/sdk/tools/
-cp /source/proto/common/identity.proto /output/sdk/proto/common/
-cp /source/proto/communication/session.proto /output/sdk/proto/communication/
+mkdir -p /output/sdk
+bash /source/sdk/build_artifact.sh /tmp/rl-sdk-package >/dev/null
+tar -xzf /tmp/rl-sdk-package/RL-SDK.tar.gz --strip-components=1 -C /output/sdk
 cp --parents "${proto_files[@]}" /output/
 find /output -type f -exec chmod 0644 {} +
 find /output -type d -exec chmod 0755 {} +

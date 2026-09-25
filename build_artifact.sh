@@ -3,14 +3,18 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-workspace_root="${RL_TRAINING_WORKSPACE:-$(cd "${repo_dir}/.." && pwd -P)}"
-artifact_root="${workspace_root}/.workspace/artifacts/rl-contracts"
 version="$(tr -d '[:space:]' < "${repo_dir}/VERSION")"
 builder_image="rl-training/contracts-builder:${version}"
+channel="production"
+if [ "${1:-}" = "--development" ]; then
+    channel="development"
+    shift
+fi
+artifact_root="${RL_ARTIFACT_ROOT:-${repo_dir}/build/artifacts/${channel}}"
 profile="${1:-all}"
 
 if [ "$#" -gt 1 ]; then
-    echo "usage: bash build_artifact.sh [training|task-maze|all]" >&2
+    echo "usage: bash build_artifact.sh [--development] [training|task-maze|all]" >&2
     exit 2
 fi
 case "${profile}" in
@@ -23,10 +27,11 @@ esac
 
 mkdir -p "${artifact_root}"
 
-docker build \
+docker build --provenance=false \
     --file "${repo_dir}/Dockerfile.build" \
+    --target toolchain \
     --tag "${builder_image}" \
-    "${repo_dir}"
+    "${repo_dir}" >&2
 
 active_temp=""
 cleanup() {
@@ -39,6 +44,9 @@ trap cleanup EXIT
 build_bundle() {
     local selected="$1"
     local output_dir="${artifact_root}/${selected}"
+    if [ "${channel}" = "development" ]; then
+        output_dir="${output_dir}/current"
+    fi
     source "${repo_dir}/scripts/profiles.sh"
     select_contract_profile "${selected}"
     local -a required_files=("sdk/CMakeLists.txt" "sdk/include/rl_sdk/task_client.h" "sdk/include/rl_sdk/session.h" "sdk/include/rl_sdk/metric_catalog.h"
@@ -61,17 +69,18 @@ build_bundle() {
     fi
 
     active_temp="$(mktemp -d "${artifact_root}/.tmp-contracts.XXXXXX")"
-    docker run --rm \
-        --volume "${repo_dir}:/source:ro" \
-        --volume "${active_temp}:/output" \
-        "${builder_image}" "${selected}"
+    docker build --provenance=false --file "${repo_dir}/Dockerfile.build" \
+        --target artifact --build-arg "CONTRACT_PROFILE=${selected}" \
+        --output "type=local,dest=${active_temp}" "${repo_dir}" >&2
 
     for required in "${required_files[@]}"; do
         test -f "${active_temp}/${required}"
     done
 
-    rm -rf "${output_dir}"
-    mv "${active_temp}" "${output_dir}"
+    mkdir -p "${output_dir}"
+    # Compare bytes only to avoid invalidating consumer builds for unchanged input.
+    rsync -rcp --delete "${active_temp}/" "${output_dir}/"
+    rm -rf "${active_temp}"
     active_temp=""
     printf '%s\n' "${output_dir}"
 }

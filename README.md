@@ -25,8 +25,8 @@ bash build_artifact.sh
 输出：
 
 ```text
-../.workspace/artifacts/rl-contracts/training/
-../.workspace/artifacts/rl-contracts/task-maze/
+build/artifacts/production/training/
+build/artifacts/production/task-maze/
 ```
 
 也可以只生成一个明确目标：
@@ -39,7 +39,7 @@ bash build_artifact.sh task-maze
 `training/` 包含任务无关的训练、样本池、模型分发和训练指标 bindings；`task-maze/` 包含
 Client↔AIServer Maze RPC 与 Maze Episode 指标。二者都是生成源码，
 不以 Docker 平台作为兼容或同步门禁。Sample Pool 与 Model Distributor 的二进制制品仍由各自
-仓库记录真实构建平台。构建入口使用临时目录完成后再替换对应 profile 的当前输出；Git clean/dirty 与源码哈希
+仓库记录真实构建平台。构建入口在临时目录接收成功生成的输出，再按内容更新对应 profile；Git clean/dirty 与源码哈希
 不作为生成门禁。
 
 ## 3. 独立 RL-SDK 与任务本地编译
@@ -74,3 +74,9 @@ Sample Pool/Model Distributor 二进制仍由独立制品脚本装配。运行�
 ## License
 
 [MIT License](LICENSE)
+
+## 构建缓存与输入
+
+`build_artifact.sh [--development] [training|task-maze|all]` 是唯一制品实现，`build_dev_artifact.sh` 选择开发输出通道。BuildKit 跟踪 Proto、SDK 和生成脚本输入，复用未变化的生成层；导出时仅更新内容变化的文件，保留其余文件时间戳。SDK 只在 `sdk/` 中交付，独立 `RL-SDK.tar.gz` 与随包 SDK 使用同一打包入口。普通构建不会覆盖消费仓协议。
+
+默认输出仅在本仓 `build/artifacts/<channel>/`；`RL_ARTIFACT_ROOT` 可显式指定其他输出根目录。Framework 在其约定布局下设置工作区制品路径，Contracts 不查找或同步消费仓。

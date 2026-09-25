@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim AS toolchain
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -15,3 +15,17 @@ RUN pip install --no-cache-dir \
 COPY scripts/generate.sh /usr/local/bin/generate-contracts
 
 ENTRYPOINT ["/usr/local/bin/generate-contracts"]
+
+# The build graph includes every generator/source input; unchanged profiles reuse
+# the generated layer. Export is separate from the reusable toolchain image.
+FROM toolchain AS generated
+WORKDIR /source
+COPY proto proto
+COPY sdk sdk
+COPY scripts scripts
+COPY LICENSE LICENSE
+ARG CONTRACT_PROFILE=training
+RUN generate-contracts "${CONTRACT_PROFILE}"
+
+FROM scratch AS artifact
+COPY --from=generated /output/ /

@@ -28,8 +28,8 @@ bash build_artifact.sh
 Output:
 
 ```text
-../.workspace/artifacts/rl-contracts/training/
-../.workspace/artifacts/rl-contracts/task-maze/
+build/artifacts/production/training/
+build/artifacts/production/task-maze/
 ```
 
 Build either target explicitly when only one is needed:
@@ -85,3 +85,12 @@ equality.
 ## License
 
 [MIT License](LICENSE)
+
+## Build input and cache ownership
+
+`build_artifact.sh [--development] [training|task-maze|all]` owns artifact generation;
+`build_dev_artifact.sh` selects the development channel. Outputs default to this repository's
+`build/artifacts/<channel>/`; `RL_ARTIFACT_ROOT` can explicitly select a different root.
+BuildKit tracks Proto, SDK and generator inputs. Export updates changed content only, preserving
+unchanged file timestamps. The single SDK package lives in `sdk/` and uses the same packaging
+entrypoint as `RL-SDK.tar.gz`. Only Framework selects workspace paths and synchronizes consumers.
